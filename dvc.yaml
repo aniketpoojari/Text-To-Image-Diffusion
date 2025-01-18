@@ -1,0 +1,46 @@
+stages:
+  training:
+    cmd: python src/training.py --config=params.yaml
+    deps:
+      - src/training.py
+      - src/dataloader.py
+    params:
+      - data.raw
+      - data.train_size
+      - data.val_size
+      - clip.max_length
+      - vae.image_size
+      - DDPMScheduler.T
+      - unet.image_size
+      - unet.in_channels
+      - unet.out_channels
+      - unet.down_block_types
+      - unet.up_block_types
+      - unet.mid_block_type
+      - unet.block_out_channels
+      - unet.layers_per_block
+      - unet.norm_num_groups
+      - unet.cross_attention_dim
+      - unet.attention_head_dim
+      - unet.dropout
+      - unet.time_embedding_type
+      - unet.act_fn
+      - training.batch_size
+      - training.vae_learning_rate
+      - training.unet_learning_rate
+      - training.weight_decay
+      - training.num_epochs
+    outs:
+      - training_completion.txt
+
+  log_training_model:
+    cmd: python src/log_training_model.py --config=params.yaml
+    deps:
+      - src/log_training_model.py
+      - training_completion.txt
+    params:
+      - mlflow_pretraining.server_uri
+      - mlflow_pretraining.experiment_name
+    outs:
+      - saved_models/vae.pth
+      - saved_models/diffuser.pth

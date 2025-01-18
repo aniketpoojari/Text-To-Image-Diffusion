@@ -8,12 +8,15 @@ import os
 import random
 
 class TextImageDataLoader(Dataset):
-    def __init__(self, datadir, image_size: Tuple[int, int], max_text_length: int):
+    def __init__(self, datadir, range, image_size: Tuple[int, int], max_text_length: int):
         super().__init__()
 
+        self.datadir = datadir
         self.datalist = os.listdir(datadir + '/images')
         # random.seed(42)
         # random.shuffle(images_list)
+        self.datalist = self.datalist[range[0]:range[0] + range[1]]
+
         self.image_size = image_size
         self.max_text_length = max_text_length
 
@@ -36,11 +39,11 @@ class TextImageDataLoader(Dataset):
         comment_file = image_file.replace('.jpg', '.txt')  # Assumes consistent naming
 
         # Load and preprocess the image
-        image = Image.open(f'flowers/images/{image_file}').convert("RGB")
+        image = Image.open(f'{self.datadir}/images/{image_file}').convert("RGB")
         image = self.image_transform(image)
 
         # Load the text caption
-        with open(f'flowers/captions/{comment_file}', 'r') as f:
+        with open(f'{self.datadir}/captions/{comment_file}', 'r') as f:
             text = f.read()
 
         # Tokenize the text
