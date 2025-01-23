@@ -1,26 +1,26 @@
 schema: '2.0'
 stages:
   training:
-    cmd: python src/training.py --config=params.yaml
+    cmd: python src/trainingjob.py
     deps:
     - path: src/dataloader.py
       hash: md5
       md5: 5dd15a065eae81b5867a3509e8215824
       size: 2381
-    - path: src/training.py
+    - path: src/training_sagemaker.py
       hash: md5
-      md5: 3a8ae9d99e35cc65b2e1fcd24e6fb784
-      size: 12282
+      md5: 03f3c0e9147a93781f63143ae0abccf3
+      size: 12557
     params:
       params.yaml:
         DDPMScheduler.T: 300
         clip.max_length: 77
         data.raw: data/raw/flowers
-        data.train_size: 10
-        data.val_size: 5
-        training.batch_size: 8
-        training.num_epochs: 5
-        training.unet_learning_rate: 0.0001
+        data.train_size: 300
+        data.val_size: 30
+        training.batch_size: 4
+        training.num_epochs: 10
+        training.unet_learning_rate: 0.001
         training.vae_learning_rate: 5e-05
         training.weight_decay: 0.0001
         unet.act_fn: silu
@@ -32,12 +32,12 @@ stages:
         unet.cross_attention_dim: 512
         unet.down_block_types:
         - CrossAttnDownBlock2D
-        - CrossAttnDownBlock2D
         - DownBlock2D
+        - CrossAttnDownBlock2D
         unet.dropout: 0.1
         unet.image_size:
-        - 8
-        - 8
+        - 16
+        - 16
         unet.in_channels: 4
         unet.layers_per_block: 2
         unet.mid_block_type: UNetMidBlock2DCrossAttn
@@ -46,15 +46,15 @@ stages:
         unet.time_embedding_type: positional
         unet.up_block_types:
         - CrossAttnUpBlock2D
-        - CrossAttnUpBlock2D
         - UpBlock2D
+        - CrossAttnUpBlock2D
         vae.image_size:
-        - 64
-        - 64
+        - 128
+        - 128
     outs:
     - path: training_completion.txt
       hash: md5
-      md5: 2fd4ddf30733344266255f5faee87772
+      md5: b28104c6e070b9abb3686c5e554210e7
       size: 41
   log_training_model:
     cmd: python src/log_training_model.py --config=params.yaml
@@ -65,7 +65,7 @@ stages:
       size: 1564
     - path: training_completion.txt
       hash: md5
-      md5: 2fd4ddf30733344266255f5faee87772
+      md5: a01637f99908a13a80aa4067caf7d637
       size: 41
     params:
       params.yaml:
@@ -74,9 +74,63 @@ stages:
     outs:
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: fd948f7d526f4d008754c82ed25dbffb
-      size: 90785002
+      md5: 961ccba70d66ab21cd4ceeb337240ee3
+      size: 27280418
     - path: saved_models/vae.pth
       hash: md5
-      md5: 8dc6d86891ceb7bb54aa835275f8d730
+      md5: 7260161a64282493215c212d84d9f304
       size: 334735754
+  data-push:
+    cmd: aws s3 cp data/raw/flowers s3://text-to-image-diffusion-aniket --recursive
+    deps:
+    - path: data/raw/flowers
+      hash: md5
+      md5: c1049fd5191c10d36b1a29ec92f5d865.dir
+      size: 352971117
+      nfiles: 16378
+  ecr-login:
+    cmd: aws ecr get-login-password --region us-west-2 | docker login --username AWS
+      --password-stdin 975050169307.dkr.ecr.us-west-2.amazonaws.com
+    deps:
+    - path: src/Dockerfile
+      hash: md5
+      md5: 908c6c7d442c2ae864f19a077a8e6383
+      size: 528
+    - path: src/code/dataloader.py
+      hash: md5
+      md5: 5dd15a065eae81b5867a3509e8215824
+      size: 2381
+    - path: src/code/training_sagemaker.py
+      hash: md5
+      md5: 99f0fe90f01f37404defbcf1ca65e10e
+      size: 12844
+  build-docker:
+    cmd: cd src && docker build -t diffusion . && docker tag diffusion:latest 975050169307.dkr.ecr.us-west-2.amazonaws.com/diffusion:latest
+    deps:
+    - path: src/Dockerfile
+      hash: md5
+      md5: e0fcb02430e4a776ce52bad6db583680
+      size: 2323
+    - path: src/dataloader.py
+      hash: md5
+      md5: 5dd15a065eae81b5867a3509e8215824
+      size: 2381
+    - path: src/training_sagemaker.py
+      hash: md5
+      md5: 99f0fe90f01f37404defbcf1ca65e10e
+      size: 12844
+  docker-push:
+    cmd: cd src && docker push 975050169307.dkr.ecr.us-west-2.amazonaws.com/diffusion:latest
+    deps:
+    - path: src/Dockerfile
+      hash: md5
+      md5: e0fcb02430e4a776ce52bad6db583680
+      size: 2323
+    - path: src/dataloader.py
+      hash: md5
+      md5: 5dd15a065eae81b5867a3509e8215824
+      size: 2381
+    - path: src/training_sagemaker.py
+      hash: md5
+      md5: 99f0fe90f01f37404defbcf1ca65e10e
+      size: 12844

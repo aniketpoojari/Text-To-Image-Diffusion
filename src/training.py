@@ -90,9 +90,8 @@ def training(config_path):
     optimizer_diffuser = torch.optim.AdamW(diffuser.parameters(), lr=unet_learning_rate, weight_decay=weight_decay)
 
     # INITIALIZE LEARNING RATE SCHEDULERS
-    total_training_steps = len(train_loader) * num_epochs
-    scheduler_vae = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_vae, total_training_steps)
-    scheduler_diffuser = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_diffuser, total_training_steps)
+    scheduler_vae = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_vae, num_epochs)
+    scheduler_diffuser = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_diffuser, num_epochs)
 
     # INITIALIZE GRAD SCALERS FOR AMP (AUTOMATIC MIXED PRECISION)
     scaler_vae = torch.amp.GradScaler()
@@ -153,7 +152,6 @@ def training(config_path):
                 scaler_vae.scale(reconstruction_loss).backward()  # SCALING LOSS FOR AMP
                 scaler_vae.step(optimizer_vae)  # APPLY GRADIENTS
                 scaler_vae.update()  # UPDATE GRAD SCALER
-                scheduler_vae.step()
 
                 # NORMALIZE LATENTS BEFORE PASSING TO DIFFUSER
                 latents = latents.detach() * 0.18215
@@ -174,7 +172,6 @@ def training(config_path):
                 scaler_diffuser.scale(diffusion_loss).backward()  # SCALING LOSS FOR AMP
                 scaler_diffuser.step(optimizer_diffuser)  # APPLY GRADIENTS
                 scaler_diffuser.update()  # UPDATE GRAD SCALER
-                scheduler_diffuser.step()
 
             # VALIDATION LOOP: EVALUATE PERFORMANCE ON VALIDATION SET
             vae.eval()
@@ -208,6 +205,10 @@ def training(config_path):
                         diffusion_loss = F.mse_loss(noise_pred, epsilons)
                     val_diffuser_epoch_loss += diffusion_loss.item() * images.shape[0]
 
+            # STEP LEARNING RATE SCHEDULERS
+            scheduler_vae.step()
+            scheduler_diffuser.step()
+            
             # CALCULATE AVERAGE LOSSES FOR TRAINING AND VALIDATION
             avg_train_vae_epoch_loss = train_vae_epoch_loss / train_l
             avg_val_vae_epoch_loss = val_vae_epoch_loss / val_l
