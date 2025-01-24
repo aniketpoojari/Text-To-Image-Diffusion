@@ -1,3 +1,4 @@
 /training_completion.txt
 /mlflow.db
 /mlruns/*
+/saved_models
