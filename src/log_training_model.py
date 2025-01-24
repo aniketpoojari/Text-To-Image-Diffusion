@@ -3,13 +3,14 @@ import argparse
 import mlflow
 import pandas as pd
 import shutil
+import boto3
 
 
 def log_production_model(config_path):
     config = read_params(config_path)
 
-    experiment_name = config["mlflow_pretraining"]["experiment_name"]
-    server_uri = config["mlflow_pretraining"]["server_uri"]
+    server_uri = config["mlflow"]["server_uri"]
+    experiment_name = config["mlflow"]["experiment_name"]
 
     mlflow.set_tracking_uri(server_uri)
 
@@ -21,18 +22,25 @@ def log_production_model(config_path):
     df = df[df["status"] == "FINISHED"]
 
     vae = df[df["metrics.val_vae_loss"] == df["metrics.val_vae_loss"].min()]
-    run_id = vae["run_id"].values[0]
-    vae_src =  "./mlruns" + vae['artifact_uri'].values[0].split("mlruns")[1] + "/" + run_id + "/vae/data/model.pth"
+    vae_src = vae['artifact_uri'].values[0].split("mlflow-diffusion-aniket/")[1] + "/vae/data/model.pth"
 
     diffuser = df[df["metrics.val_diffuser_loss"] == df["metrics.val_diffuser_loss"].min()]
-    run_id = diffuser["run_id"].values[0]
-    diffuser_src = "./mlruns" + diffuser['artifact_uri'].values[0].split("mlruns")[1] + "/" + run_id + "/diffuser/data/model.pth"
+    diffuser_src = diffuser['artifact_uri'].values[0].split("mlflow-diffusion-aniket/")[1] + "/diffuser/data/model.pth"
 
     # copy model
     vae_dest = config["log_trained_model"]["vae_dir"]
     diffuser_dest = config["log_trained_model"]["diffuser_dir"]
-    shutil.copyfile(vae_src, vae_dest)
-    shutil.copyfile(diffuser_src, diffuser_dest)
+    # shutil.copyfile(vae_src, vae_dest)
+    # shutil.copyfile(diffuser_src, diffuser_dest)
+
+    s3 = boto3.client('s3')
+
+    bucket_name = config["mlflow"]["s3_mlruns_bucket"]
+    
+    # Download file
+    s3.download_file(bucket_name, vae_src, vae_dest)
+    s3.download_file(bucket_name, diffuser_src, diffuser_dest)
+
 
 
 if __name__ == "__main__":

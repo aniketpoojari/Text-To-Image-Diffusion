@@ -1,20 +1,15 @@
+import os
+import json
+import accelerate
+import mlflow
+from dataloader import TextImageDataLoader
 import torch
+import torch.nn as nn
+import torch.distributed as dist
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, DistributedSampler
 from diffusers import DDPMScheduler, UNet2DConditionModel, AutoencoderKL
-import os
-import torch.distributed as dist
-import torch.nn as nn
-import mlflow
-import mlflow.pytorch
-from dataloader import TextImageDataLoader
-import accelerate
-import logging
-import json
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def setup_distributed():
     """Initialize distributed training environment for SageMaker."""
@@ -48,7 +43,6 @@ def setup_distributed():
         # Set device
         torch.cuda.set_device(local_rank)
         
-        logger.info(f"Initialized distributed training: rank={rank}, world_size={world_size}, local_rank={local_rank}")
         return rank, world_size, local_rank
         
     except Exception as e:
@@ -59,10 +53,8 @@ def setup_distributed():
 def training():
 
     rank, world_size, local_rank = setup_distributed()
-    print(f"Rank: {rank}, World Size: {world_size}, Local Rank: {local_rank}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
     # Retrieve environment variables
     train_size = int(os.getenv("TRAIN_SIZE", "300"))
@@ -99,10 +91,14 @@ def training():
         run_name = os.getenv("RUN_NAME", "1st")
         registered_model_name = os.getenv("REGISTERED_MODEL_NAME", "Diffusion")
         server_uri = os.getenv("SERVER_URI", "")
+        s3_mlruns_bucket = os.getenv("S3_MLRUNS_BUCKET", "")
+        
+        # check whetherexperiment name exists in mlflow
         mlflow.set_tracking_uri(server_uri)
+        if mlflow.get_experiment_by_name(experiment_name) is None:
+            mlflow.create_experiment(experiment_name, s3_mlruns_bucket)
         mlflow.set_experiment(experiment_name=experiment_name)
         mlflow.start_run(run_name=run_name)
-        mlflow.set_artifact_uri("/opt/ml/output/mlruns")
 
         mlflow.log_params({
             "train_size": train_size,
@@ -305,9 +301,9 @@ def training():
             print(f"Epoch {epoch + 1} - Train VAE: {train_vae_epoch_loss:.4f} | Val VAE: {val_vae_epoch_loss:.4f} | "
                   f"Train Diff: {train_diffuser_epoch_loss:.4f} | Val Diff: {val_diffuser_epoch_loss:.4f}")
 
-    if dist.get_rank() == 0:
-        mlflow.pytorch.log_model(vae, f"{mlflow.info.run_id}/vae", registered_model_name=registered_model_name)
-        mlflow.pytorch.log_model(diffuser, f"{mlflow.info.run_id}/diffuser", registered_model_name=registered_model_name)
+    if rank == 0:
+        mlflow.pytorch.log_model(vae.module, "vae", registered_model_name=registered_model_name)
+        mlflow.pytorch.log_model(diffuser.module, "diffuser", registered_model_name=registered_model_name)
         mlflow.end_run()
         
 

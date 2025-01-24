@@ -1,0 +1,1 @@
+"Each instance costs approximately $0.80 per hour. I provisioned two instances, and they ran for 40 minutes."

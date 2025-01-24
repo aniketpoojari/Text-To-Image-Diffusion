@@ -1,85 +1,95 @@
 schema: '2.0'
 stages:
   training:
-    cmd: python src/trainingjob.py
+    cmd: python src/trainingjob.py --config=params.yaml
     deps:
-    - path: src/dataloader.py
+    - path: src/code/dataloader.py
       hash: md5
       md5: 5dd15a065eae81b5867a3509e8215824
       size: 2381
-    - path: src/training_sagemaker.py
+    - path: src/code/training_sagemaker.py
       hash: md5
-      md5: 03f3c0e9147a93781f63143ae0abccf3
-      size: 12557
+      md5: 53e9cead4e267e0cbf6767dd346b8ee5
+      size: 14283
+    - path: src/trainingjob.py
+      hash: md5
+      md5: e27013babb0827d03f59f72085c6bfcb
+      size: 4047
     params:
       params.yaml:
-        DDPMScheduler.T: 300
+        DDPMScheduler.T: 1000
         clip.max_length: 77
-        data.raw: data/raw/flowers
-        data.train_size: 300
-        data.val_size: 30
-        training.batch_size: 4
-        training.num_epochs: 10
+        data.train_size: 2000
+        data.val_size: 200
+        mlflow.experiment_name: Training Diffusion
+        mlflow.registered_model_name: Diffusion
+        mlflow.run_name: 1st
+        mlflow.s3_mlruns_bucket: mlflow-diffusion-aniket
+        mlflow.server_uri: https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow
+        mlflow.tracking_password: 62fc66d4751fc5b4adc42e8eb45c95ee863e0ace
+        mlflow.tracking_username: aniketpoojari
+        pytorch_estimator.entry_point: training_sagemaker.py
+        pytorch_estimator.framework_version: 2.1.0
+        pytorch_estimator.image_uri: 975050169307.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1.0-cpu-py310
+        pytorch_estimator.instance_count: 2
+        pytorch_estimator.instance_type: ml.g4dn.xlarge
+        pytorch_estimator.max_run: 3600
+        pytorch_estimator.max_wait: 3600
+        pytorch_estimator.py_version: py310
+        pytorch_estimator.role: arn:aws:iam::975050169307:role/training-jobs-role
+        pytorch_estimator.s3_train_data: s3://text-to-image-diffusion-aniket/
+        pytorch_estimator.source_dir: src/code
+        pytorch_estimator.use_spot_instances: true
+        training.batch_size: 8
+        training.num_epochs: 20
         training.unet_learning_rate: 0.001
         training.vae_learning_rate: 5e-05
         training.weight_decay: 0.0001
         unet.act_fn: silu
         unet.attention_head_dim: 12
-        unet.block_out_channels:
-        - 64
-        - 128
-        - 256
+        unet.block_out_channels: 64,128,256
         unet.cross_attention_dim: 512
-        unet.down_block_types:
-        - CrossAttnDownBlock2D
-        - DownBlock2D
-        - CrossAttnDownBlock2D
+        unet.down_block_types: CrossAttnDownBlock2D,CrossAttnDownBlock2D,CrossAttnDownBlock2D
         unet.dropout: 0.1
-        unet.image_size:
-        - 16
-        - 16
+        unet.image_size: 16,16
         unet.in_channels: 4
         unet.layers_per_block: 2
         unet.mid_block_type: UNetMidBlock2DCrossAttn
         unet.norm_num_groups: 32
         unet.out_channels: 4
         unet.time_embedding_type: positional
-        unet.up_block_types:
-        - CrossAttnUpBlock2D
-        - UpBlock2D
-        - CrossAttnUpBlock2D
-        vae.image_size:
-        - 128
-        - 128
+        unet.up_block_types: CrossAttnUpBlock2D,CrossAttnUpBlock2D,CrossAttnUpBlock2D
+        vae.image_size: 128,128
     outs:
     - path: training_completion.txt
       hash: md5
-      md5: b28104c6e070b9abb3686c5e554210e7
+      md5: 5e66fbdc67c0df34a4e7e423e6e63583
       size: 41
   log_training_model:
     cmd: python src/log_training_model.py --config=params.yaml
     deps:
     - path: src/log_training_model.py
       hash: md5
-      md5: 49bee4876239c6abed3cbab587af4bd5
-      size: 1564
+      md5: 01a105f2a929b90843cd66ebe12d8b93
+      size: 1692
     - path: training_completion.txt
       hash: md5
-      md5: a01637f99908a13a80aa4067caf7d637
+      md5: 5e66fbdc67c0df34a4e7e423e6e63583
       size: 41
     params:
       params.yaml:
-        mlflow_pretraining.experiment_name: Training
-        mlflow_pretraining.server_uri: sqlite:///mlflow.db
+        mlflow.experiment_name: Training Diffusion
+        mlflow.s3_mlruns_bucket: mlflow-diffusion-aniket
+        mlflow.server_uri: https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow
     outs:
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 961ccba70d66ab21cd4ceeb337240ee3
-      size: 27280418
+      md5: e631fcabaf06f6c3799b591a1e8d9fcc
+      size: 104766370
     - path: saved_models/vae.pth
       hash: md5
-      md5: 7260161a64282493215c212d84d9f304
-      size: 334735754
+      md5: edffd590b9600b23d0f5d45cab435d09
+      size: 334737674
   data-push:
     cmd: aws s3 cp data/raw/flowers s3://text-to-image-diffusion-aniket --recursive
     deps:

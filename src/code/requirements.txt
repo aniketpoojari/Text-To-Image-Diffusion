@@ -3,9 +3,4 @@ torchvision
 accelerate
 diffusers
 transformers
-# Pillow
-# mlflow
-# numpy
-# boto3
-# sagemaker
-# tqdm
+mlflow

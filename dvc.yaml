@@ -3,37 +3,24 @@ stages:
     cmd: aws s3 cp data/raw/flowers s3://text-to-image-diffusion-aniket --recursive
     deps:
       - data/raw/flowers
-
-  # ecr-login:
-  #   cmd: aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 975050169307.dkr.ecr.us-west-2.amazonaws.com
-  #   deps:
-  #     - src/code/training_sagemaker.py
-  #     - src/code/dataloader.py
-  #     - src/Dockerfile
      
   # build-docker:
-  #   cmd: cd src && docker build -t diffusion . && docker tag diffusion:latest 975050169307.dkr.ecr.us-west-2.amazonaws.com/diffusion:latest
+  #   cmd: cd src && docker build -t diffusion .
   #   deps:
   #     - src/code/training_sagemaker.py
   #     - src/code/dataloader.py
   #     - src/Dockerfile
-       
-  # docker-push:
-    # cmd: cd src && docker push 975050169307.dkr.ecr.us-west-2.amazonaws.com/diffusion:latest
-    # deps:
-      # - src/code/training_sagemaker.py
-      # - src/code/dataloader.py
-      # - src/Dockerfile 
-        
+               
   training:
     # cmd: python src/training.py --config=params.yaml
-    cmd: python src/trainingjob.py
+    cmd: python src/trainingjob.py --config=params.yaml
     deps:
       # - src/training.py
       - src/code/training_sagemaker.py
       - src/code/dataloader.py
+      - src/trainingjob.py
     params:
-      - data.raw
+      # - data.raw
       - data.train_size
       - data.val_size
       - clip.max_length
@@ -58,17 +45,38 @@ stages:
       - training.unet_learning_rate
       - training.weight_decay
       - training.num_epochs
+      - mlflow.server_uri
+      - mlflow.experiment_name
+      - mlflow.run_name
+      - mlflow.registered_model_name
+      - mlflow.tracking_username
+      - mlflow.tracking_password
+      - mlflow.s3_mlruns_bucket
+      - pytorch_estimator.entry_point
+      - pytorch_estimator.source_dir
+      - pytorch_estimator.framework_version
+      - pytorch_estimator.py_version
+      - pytorch_estimator.image_uri
+      - pytorch_estimator.role
+      - pytorch_estimator.instance_count
+      - pytorch_estimator.instance_type
+      - pytorch_estimator.max_wait
+      - pytorch_estimator.max_run
+      - pytorch_estimator.use_spot_instances
+      - pytorch_estimator.s3_train_data
     outs:
       - training_completion.txt
 
-  # log_training_model:
-  #   cmd: python src/log_training_model.py --config=params.yaml
-  #   deps:
-  #     - src/log_training_model.py
-  #     - training_completion.txt
-  #   params:
-  #     - mlflow_pretraining.server_uri
-  #     - mlflow_pretraining.experiment_name
-  #   outs:
-  #     - saved_models/vae.pth
-  #     - saved_models/diffuser.pth
+  log_training_model:
+    cmd: python src/log_training_model.py --config=params.yaml
+    deps:
+      - src/log_training_model.py
+      - training_completion.txt
+    params:
+      - mlflow.server_uri
+      - mlflow.experiment_name
+      - mlflow.s3_mlruns_bucket
+
+    outs:
+      - saved_models/vae.pth
+      - saved_models/diffuser.pth
