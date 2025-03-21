@@ -45,6 +45,7 @@ This project focuses on text-to-image generation using diffusion models. The goa
 ## 🤖 Model Training
     - Save data to S3 bucket.
     - Update params.yaml to update hyperparameters and other configurations.
+    - Provision AWS SageMaker instances.
    ```bash
     dvc repo
    ```
