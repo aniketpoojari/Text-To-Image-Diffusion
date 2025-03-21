@@ -1,18 +1,5 @@
 # 🚀 **Text-to-Image Generation with Diffusion Model and Distributed training on AWS Sagemaker Training Jobs**
 
-## 📚 **Table of Contents**
-- [📄 Introduction](#introduction)
-- [📂 DVC Pipeline (`dvc.yaml`)](#dvc-pipeline-dvcyaml)
-- [🔧 Parameters (`params.yaml`)](#parameters-paramsyaml)
-- [⚡️ SageMaker Trigger (`trainingjob.py`)](#sagemaker-trigger-trainingjobpy)
-- [📝 Training Code (`code` Folder)](#training-code-code-folder)
-- [📦 Log Training Model (`log_training_model.py`)](#log-training-model-log_training_modelpy)
-- [📥 Download and Setup](#download-and-setup)
-- [🚀 Run DVC Pipeline](#run-dvc-pipeline)
-- [📈 Model Evaluation](#model-evaluation)
-- [🎉 Results](#results)
-- [🚀 Usage](#usage)
-
 
 ## 📄 **Introduction**
 This project generates high-quality images from text captions using a **diffusion model** trained on AWS SageMaker. The main components include:
@@ -75,7 +62,6 @@ pip install -r requirements.txt
 ```bash
 dvc repro
 ```
-💡 *Note: Each AWS instance costs approximately $0.80 per hour. I provisioned 2 instances for 40 minutes.*
 
 
 ## 📈 **Model Evaluation**
