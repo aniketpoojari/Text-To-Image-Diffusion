@@ -11,7 +11,7 @@ def setup_training(config_path):
     # Initialize SageMaker session
     sagemaker_session = sagemaker.Session()
     
-    # Environment variables for training
+    # Environment variables for training script inside the container pulled from params.yaml
     environment = {
         "TRAIN_SIZE": str(config['data']['train_size']),
         "VAL_SIZE": str(config['data']['val_size']),
@@ -55,28 +55,28 @@ def setup_training(config_path):
 
     # Configure PyTorch estimator
     estimator = PyTorch(
-        entry_point=config['pytorch_estimator']['entry_point'],
-        source_dir=config['pytorch_estimator']['source_dir'],
-        role=config['pytorch_estimator']['role'],
-        framework_version=config['pytorch_estimator']['framework_version'],
-        py_version=config['pytorch_estimator']['py_version'],
-        instance_count=config['pytorch_estimator']['instance_count'],
-        instance_type=config['pytorch_estimator']['instance_type'],
-        use_spot_instances=config['pytorch_estimator']['use_spot_instances'],
+        entry_point=config['pytorch_estimator']['entry_point'], # training script inside code folder
+        source_dir=config['pytorch_estimator']['source_dir'], # folder containing the training code that is pushed to sagemaker training job instance
+        role=config['pytorch_estimator']['role'], # role to be used by the training job
+        framework_version=config['pytorch_estimator']['framework_version'], # pytorch version
+        py_version=config['pytorch_estimator']['py_version'], # python version
+        instance_count=config['pytorch_estimator']['instance_count'], # number of training instances for distributed training
+        instance_type=config['pytorch_estimator']['instance_type'], # instance type, use GPU instances
+        use_spot_instances=config['pytorch_estimator']['use_spot_instances'], # use spot instances for reduced cost
         max_wait=config['pytorch_estimator']['max_wait'],
         max_run=config['pytorch_estimator']['max_run'],
-        environment=environment,
+        environment=environment, # environment variables that are captured by the training script
         distribution={
             "pytorchddp": {
                 "enabled": True,
-                "processes_per_host": 1
+                "processes_per_host": 1 # GPU instances per training instance
             }
         }
     )
 
     # Define data channels
     data = {
-        'train': config['pytorch_estimator']['s3_train_data'],
+        'train': config['pytorch_estimator']['s3_train_data'], # training data that is pulled from s3 and into /opt/ml/input/data/train directory inside training instance
     }
     
     # Start training
