@@ -1,67 +1,100 @@
-# 🚀 Project Name
-**Text-to-Image Generation Diffusion Model using Huggingface and Distibuted AWS SageMaker Training Jobs**
+# 🚀 **Text-to-Image Generation with Diffusion Models on AWS SageMaker**
 
-## 📜 Table of Contents
-1. [Introduction](#introduction)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Data](#data)
-5. [Model Training](#model-training)
-6. [SageMaker Integration](#sagemaker-integration)
-7. [Evaluation](#evaluation)
-8. [Results](#results)
-9. [Usage](#usage)
+## 📚 **Table of Contents**
+- [📄 Introduction](#introduction)
+- [📂 DVC Pipeline (`dvc.yaml`)](#dvc-pipeline-dvcyaml)
+- [🔧 Parameters (`params.yaml`)](#parameters-paramsyaml)
+- [⚡️ SageMaker Trigger (`trainingjob.py`)](#sagemaker-trigger-trainingjobpy)
+- [📝 Training Code (`code` Folder)](#training-code-code-folder)
+- [📦 Log Training Model (`log_training_model.py`)](#log-training-model-log_training_modelpy)
+- [📥 Download and Setup](#download-and-setup)
+- [🚀 Run DVC Pipeline](#run-dvc-pipeline)
+- [📈 Model Evaluation](#model-evaluation)
+- [🎉 Results](#results)
+- [🚀 Usage](#usage)
 
-## 📄 Introduction
-This project focuses on text-to-image generation using diffusion models. The goal is to generate high-quality images conditioned on text captions. The project leverages a Variational Autoencoder (VAE) and a cross-attetional UNet-based diffusion model to achieve this. Key components include:
 
-- **CLIP (Contrastive Language-Image Pre-training)**: CLIP is used to encode text captions into meaningful embeddings, guiding the diffusion model to generate images that are semantically aligned with the input text. CLIP ensures high-quality, contextually accurate image generation.
-- **VAE**: An autoencoder that encodes images into latent representations and decodes them back into images, this helps in reducing the size of the image fed into the unet.
-- **Cross-Attetional Unet-based Diffusion Models**: A diffusion-based generative model is trained to predict the noise added to images from text captions at each timestep. The cross-attention-unet takes the text embedded captions, latent space representation of noise image from VAE and time steps as inputs. It then predicts the noise added to the image at each timestep.
-- **AWS SageMaker Training Jobs Integration**: The project utilizes AWS sagemaker traning jobs to train the model on cloud in a distributed manner.
-- **MLflow Tracking**: Experiment tracking, hyperparameter logging, and model versioning are managed using MLflow in Dagshub Cloud.
+## 📄 **Introduction**
+This project generates high-quality images from text captions using a **diffusion model** trained on AWS SageMaker. The main components include:
 
-## 🌟 Features
-1. [Local Training](src/training.py) - Trains the model locally, update the dvc.yaml if you want to train locally
-2. [Cloud Training](src/codes) - This folder contains the code for training the model on AWS SageMaker.
-3. [Sagemaker Trigger](src/trainingjob.py) - Triggers the training job on AWS SageMaker, uploads the code folder to the Sagemaker instance
-4. [Log Training Model](src/log_training_model.py) - Gets the details of the best model from Dagshub mlflow and downloads the model from S3 bucket.
-5. [dvc.yaml](dvc.yaml) - Defines the pipelines for the project.
-6. [params.yaml](params.yaml) - Defines the hyperparameters for the project.
+- **CLIP:** Converts text captions into embeddings to guide image generation.  
+- **VAE (Variational Autoencoder):** Compresses images into a smaller latent space and reconstructs them efficiently.  
+- **Cross-Attentional UNet:** Predicts noise at each step to gradually refine the generated image.  
+- **AWS SageMaker:** Handles large-scale distributed training in the cloud.  
+- **MLflow on Dagshub:** Manages model tracking, logging, and versioning.  
 
-## 🚚 Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/aniketpoojari/Text-to-Image-Generation.git
-   ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
 
-## 📊 Data
-- **Image-Text Dataset**: Oxford 102 Flowers dataset of flower images with captions.
+## 📂 **DVC Pipeline (`dvc.yaml`)**
+- Defines the entire project pipeline.  
+- Controls the workflow for training, evaluation, and deployment.  
+- You can update `dvc.yaml` to modify the pipeline or change training configurations.
 
-## 🤖 Model Training
-    - Save data to S3 bucket.
-    - Update params.yaml to update hyperparameters and other configurations.
-    - Provision AWS SageMaker instances.
-   ```bash
-    dvc repo
-   ```
-   "Each instance costs approximately $0.80 per hour. I provisioned two instances, and they ran for 40 minutes."
 
-## 📈 Evaluation
-- **VAE**: Evaluated using **MSE loss** to measure how well the VAE can reconstruct images from latent representations.
-- **Diffusion Model**: Evaluated using **MSE loss** to measure how well the model can denoise images.
+## 🔧 **Parameters (`params.yaml`)**
+- configures the training process.
+- You can update `params.yaml` to change the training hyperparameters.
 
-## 🎉 Results
-- **VAE**: Since we have used pretrained VAE model from huggingface we have a low reconstruction loss.
-- **Diffusion Model**: Achieved low noise prediction loss, indicating effective image generation conditioned on text captions.
 
-## 🚀 Usage
-   ```bash
-   # Where the best models are saved after training
-   cd saved_models
-   streamlit run website.py
-   ```
+## ⚡️ **SageMaker Trigger (`trainingjob.py`)**
+- Handles the training process on AWS SageMaker.
+- Loads the variables from `params.yaml`.
+- Uploads the `code` folder to AWS SageMaker.
+- Provisions the necessary compute instances on AWS SageMaker.
+- loads the sagemaker environment with the necessary variables for the training process.
+- Handles the input and output S3 buckets. 
+
+
+## 📝 **Training Code (`code` Folder)**
+- The `code` folder contains the training code for running the model on AWS SageMaker.  
+- `training_sagemaker.py` handles the training process.
+    - Loads the variables from the environment variables.
+    - Does the distributed training.
+    - logs the meta data to MLflow on Dagshub.
+    - saves the best model to S3 bucket.
+
+
+## 📦 **Log Training Model (`log_training_model.py`)**
+- Downloads the best model from the **S3 bucket** after training.  
+- Uses MLflow logs from Dagshub to identify the best-performing model.  
+- Saves the model locally for further evaluation or deployment.  
+
+
+## 📥 **Download and Setup**
+1. **Clone the Repository:**  
+```bash
+git clone https://github.com/aniketpoojari/Text-to-Image-Generation.git
+```
+2. **Install Dependencies:**  
+```bash
+pip install -r requirements.txt
+```
+
+
+## 🔄 **Run DVC Pipeline**
+- Run the DVC pipeline to start the training process.  
+```bash
+dvc repro
+```
+💡 *Note: Each AWS instance costs approximately $0.80 per hour. I provisioned 2 instances for 40 minutes.*
+
+
+## 📈 **Model Evaluation**
+1. **VAE Evaluation:**  
+   - **MSE Loss:** Evaluates how accurately the VAE reconstructs images.  
+2. **Diffusion Model Evaluation:**  
+   - **MSE Loss:** Measures how well the diffusion model predicts noise and improves generated images.  
+
+
+## 🎉 **Results**
+- **VAE:** Low reconstruction loss due to using a pretrained VAE from Hugging Face.  
+- **Diffusion Model:** Low noise prediction loss, demonstrating effective text-to-image generation.  
+
+
+## 🚀 **Usage**
+1. **Run the Best Model:**  
+```bash
+# Navigate to the saved models directory
+cd saved_models
+# Launch the web interface
+streamlit run website.py
+```
