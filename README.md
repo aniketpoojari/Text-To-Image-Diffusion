@@ -1,4 +1,4 @@
-# 🚀 **Text-to-Image Generation with Diffusion Models on AWS SageMaker**
+# 🚀 **Text-to-Image Generation with Diffusion Model and Distributed training on AWS Sagemaker Training Jobs**
 
 ## 📚 **Table of Contents**
 - [📄 Introduction](#introduction)
