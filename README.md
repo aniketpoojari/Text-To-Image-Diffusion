@@ -5,13 +5,12 @@
 1. [Introduction](#introduction)
 2. [Features](#features)
 3. [Installation](#installation)
-4. [Requirements](#requirements)
-5. [Data](#data)
-6. [Model Training](#model-training)
-7. [SageMaker Integration](#sagemaker-integration)
-8. [Evaluation](#evaluation)
-9. [Results](#results)
-10. [Usage](#usage)
+4. [Data](#data)
+5. [Model Training](#model-training)
+6. [SageMaker Integration](#sagemaker-integration)
+7. [Evaluation](#evaluation)
+8. [Results](#results)
+9. [Usage](#usage)
 
 ## 📄 Introduction
 This project focuses on text-to-image generation using diffusion models. The goal is to generate high-quality images conditioned on text captions. The project leverages a Variational Autoencoder (VAE) and a cross-attetional UNet-based diffusion model to achieve this. Key components include:
@@ -24,10 +23,11 @@ This project focuses on text-to-image generation using diffusion models. The goa
 
 ## 🌟 Features
 1. [Local Training](src/training.py) - Trains the model locally, update the dvc.yaml if you want to train locally
-2. [Cloud Training](src/codes) - This folder contains the code for training the model on AWS SageMaker
+2. [Cloud Training](src/codes) - This folder contains the code for training the model on AWS SageMaker.
 3. [Sagemaker Trigger](src/trainingjob.py) - Triggers the training job on AWS SageMaker, uploads the code folder to the Sagemaker instance
 4. [Log Training Model](src/log_training_model.py) - Gets the details of the best model from Dagshub mlflow and downloads the model from S3 bucket.
-5. [DVC.yaml](dvc.yaml) - Defines the pipelines for the project.
+5. [dvc.yaml](dvc.yaml) - Defines the pipelines for the project.
+6. [params.yaml](params.yaml) - Defines the hyperparameters for the project.
 
 ## 🚚 Installation
 1. Clone the repository:
@@ -39,19 +39,12 @@ This project focuses on text-to-image generation using diffusion models. The goa
    pip install -r requirements.txt
    ```
 
-## 🛠️ Requirements
-- `torch`
-- `torchvision`
-- `accelerate`
-- `diffusers`
-- `transformers`
-- `mlflow`
-
 ## 📊 Data
 - **Image-Text Dataset**: Oxford 102 Flowers dataset of flower images with captions.
 
 ## 🤖 Model Training
-
+    - Save data to S3 bucket.
+    - Update params.yaml to update hyperparameters and other configurations.
    ```bash
     dvc repo
    ```
