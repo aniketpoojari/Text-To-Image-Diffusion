@@ -3,22 +3,16 @@ stages:
     cmd: aws s3 cp data/raw/flowers s3://text-to-image-diffusion-aniket --recursive
     deps:
       - data/raw/flowers
-     
-  # build-docker:
-  #   cmd: cd src && docker build -t diffusion .
-  #   deps:
-  #     - src/code/training_sagemaker.py
-  #     - src/code/dataloader.py
-  #     - src/Dockerfile
                
   training:
     # cmd: python src/training.py --config=params.yaml
     cmd: python src/trainingjob.py --config=params.yaml
     deps:
-      # - src/training.py
-      - src/code/training_sagemaker.py
-      - src/code/dataloader.py
       - src/trainingjob.py
+      # - src/training.py
+      - src/code/dataloader.py
+      - src/code/training_sagemaker.py
+      - src/code/training_sagemaker_deepspeed.py
     params:
       # - data.raw
       - data.train_size
@@ -56,7 +50,6 @@ stages:
       - pytorch_estimator.source_dir
       - pytorch_estimator.framework_version
       - pytorch_estimator.py_version
-      - pytorch_estimator.image_uri
       - pytorch_estimator.role
       - pytorch_estimator.instance_count
       - pytorch_estimator.instance_type

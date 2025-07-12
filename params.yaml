@@ -1,7 +1,7 @@
 data:
   raw: data/raw/flowers
-  train_size: 2000
-  val_size: 200
+  train_size: 3000
+  val_size: 500
 
 clip:
   max_length: 77
@@ -16,47 +16,48 @@ unet:
   image_size: 16,16
   in_channels: 4
   out_channels: 4
-  down_block_types: CrossAttnDownBlock2D,CrossAttnDownBlock2D,CrossAttnDownBlock2D
-  up_block_types: CrossAttnUpBlock2D,CrossAttnUpBlock2D,CrossAttnUpBlock2D
+  down_block_types: CrossAttnDownBlock2D
+  up_block_types: CrossAttnUpBlock2D
   mid_block_type: UNetMidBlock2DCrossAttn
-  block_out_channels: 64,128,256
+  block_out_channels: '1024'
   layers_per_block: 2
-  norm_num_groups: 32
-  cross_attention_dim: 512
-  attention_head_dim: 12
-  dropout: 0.1
+  norm_num_groups: 16
+  cross_attention_dim: 768
+  attention_head_dim: 64
+  dropout: 0.05
   time_embedding_type: positional
   act_fn: silu
 
 training:
-  batch_size: 8
-  vae_learning_rate: 5e-5
-  unet_learning_rate: 1e-3
-  weight_decay: 1e-4
-  num_epochs: 20
+  batch_size: 16
+  vae_learning_rate: 1e-4
+  unet_learning_rate: 2e-4
+  weight_decay: 1e-2
+  num_epochs: 10
 
 mlflow:
-  server_uri: <- Dagshub mlflow url ->
-  experiment_name: Training Diffusion
+  server_uri: https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow
+  # server_uri: http://127.0.0.1:5000
+  experiment_name: Training Diffusion 5
   run_name: 1st
   registered_model_name: Diffusion
-  tracking_username: <- Dagshub username ->
-  tracking_password: <- Dagshub password ->
-  s3_mlruns_bucket: <- s3 bucket to store mlruns data ->
+  tracking_username: aniketpoojari
+  tracking_password: 38fa619a54d7cdde5e6dcaa55a01a1c14f329bc2
+  s3_mlruns_bucket: text-to-image-aniket-mlflow
 
 log_trained_model:
   vae_dir: saved_models/vae.pth
   diffuser_dir: saved_models/diffuser.pth
 
 pytorch_estimator:
-    entry_point: <- code inside source dir ->
+    entry_point: training_sagemaker_deepspeed.py
     source_dir: src/code
-    framework_version: '2.1.0'
-    py_version: py310
-    role: <- role arn ->
-    instance_count: <- instance count ->
-    instance_type: <- instance type ->
-    max_wait: 3600
-    max_run: 3600
+    framework_version: '2.6.0'
+    py_version: py312
+    role: arn:aws:iam::975050169307:role/text-to-image-role
+    instance_count: 2
+    instance_type: ml.g4dn.xlarge
+    max_wait: 7200
+    max_run: 7200
     use_spot_instances: True
-    s3_train_data: <- s3 bucket to get training data ->
+    s3_train_data: s3://text-to-image-aniket

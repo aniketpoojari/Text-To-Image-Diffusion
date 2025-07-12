@@ -4,3 +4,4 @@ accelerate
 diffusers
 transformers
 mlflow
+deepspeed

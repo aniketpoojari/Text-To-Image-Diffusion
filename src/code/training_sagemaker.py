@@ -9,7 +9,52 @@ import torch.distributed as dist
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, DistributedSampler
 from diffusers import DDPMScheduler, UNet2DConditionModel, AutoencoderKL
+import zipfile
+import time
 
+def unzip_data(rank):
+    """Unzip the data file in the SageMaker container."""
+    try:
+        input_dir = "/opt/ml/input/data/train"
+        data_zip = os.path.join(input_dir, "flowers.zip")
+        extract_dir = "/opt/ml/input/data/train"
+        
+        # Only have rank 0 print progress messages
+        verbose = rank == 0
+        
+        if verbose:
+            print(f"Checking for zipped data at {data_zip}")
+        
+        if os.path.exists(data_zip):
+            if verbose:
+                print(f"Found zipped data. Extracting to {extract_dir}...")
+            
+            # Create extraction directory if it doesn't exist
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            # Extract the zip file
+            with zipfile.ZipFile(data_zip, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            
+            if verbose:
+                print("Extraction complete!")
+                
+                # List directories to confirm extraction
+                print(f"Extracted contents: {os.listdir(extract_dir)}")
+                if os.path.exists(os.path.join(extract_dir, "images")):
+                    print(f"Number of images: {len(os.listdir(os.path.join(extract_dir, 'images')))}")
+                if os.path.exists(os.path.join(extract_dir, "captions")):
+                    print(f"Number of captions: {len(os.listdir(os.path.join(extract_dir, 'captions')))}")
+            
+            # return extract_dir
+        else:
+            if verbose:
+                print("No zipped data found. Using original input directory.")
+            # return input_dir
+    
+    except Exception as e:
+        print(f"Error during data extraction: {e}")
+        # return "/opt/ml/input/data/train"  # Fallback
 
 def setup_distributed():
     """Initialize distributed training environment for SageMaker."""
@@ -127,8 +172,11 @@ def training():
             "num_epochs": num_epochs
         })
 
+
+    unzip_data(rank)
+
     # Initialize datasets
-    datadir = "/opt/ml/input/data/train"
+    datadir = "/opt/ml/input/data/train/flowers"
     train_dataset = TextImageDataLoader(datadir=datadir, range=(0, train_size), image_size=vae_image_size, max_text_length=max_length)
     val_dataset = TextImageDataLoader(datadir=datadir, range=(train_size, train_size + val_size), image_size=vae_image_size, max_text_length=max_length)
     # Create distributed samplers
@@ -175,25 +223,32 @@ def training():
     scaler_vae = torch.cuda.amp.GradScaler()
     scaler_diffuser = torch.cuda.amp.GradScaler()
 
+    # Initialize loss tracking dictionaries
+    epoch_losses = {
+        'train': {'vae': [], 'diffuser': []},
+        'val': {'vae': [], 'diffuser': []}
+    }
+
     # Training loop
     for epoch in range(num_epochs):
         if rank == 0:
             print(f"Starting epoch {epoch + 1}/{num_epochs}")
-        
+
         train_sampler.set_epoch(epoch)
-        
+
+        start_time = time.time()
+
         vae.train()
         diffuser.train()
 
-        train_vae_epoch_loss = torch.tensor(0.0, device=device)
-        train_diffuser_epoch_loss = torch.tensor(0.0, device=device)
-        train_samples = torch.tensor(0, device=device)
+        total_vae_loss = 0.0
+        total_diff_loss = 0.0
 
-        for images, captions, _ in train_loader:
+        for step, (images, captions, _) in enumerate(train_loader):
             images = images.to(device)
             captions = captions.to(device)
             batch_size = images.shape[0]
-            
+
             optimizer_vae.zero_grad()
 
             # VAE forward pass: reconstruction loss
@@ -201,8 +256,7 @@ def training():
                 latents = vae.module.encode(images).latent_dist.sample()
                 reconstructed_images = vae.module.decode(latents).sample
                 reconstruction_loss = F.mse_loss(reconstructed_images, images)
-            train_vae_epoch_loss += reconstruction_loss.detach() * batch_size
-            
+
             # VAE backward pass: update parameters
             scaler_vae.scale(reconstruction_loss).backward()
             scaler_vae.unscale_(optimizer_vae)
@@ -212,22 +266,19 @@ def training():
 
             # Normalize latents before passing to diffuser
             latents = latents.detach() * 0.18215
-            
+
             # Add noise
             ts = torch.randint(0, T, (latents.shape[0],), device=device)
             epsilons = torch.randn_like(latents, device=device)
             noisy_latents = noise_scheduler.add_noise(latents, epsilons, ts)
 
             optimizer_diffuser.zero_grad()
-            
+
             # Predict noise and calculate loss
             with torch.autocast(device_type=device, dtype=torch.float16):
                 noise_pred = diffuser(noisy_latents, ts, encoder_hidden_states=captions, return_dict=False)[0]
                 diffusion_loss = F.mse_loss(noise_pred, epsilons, reduction="mean")
 
-            train_diffuser_epoch_loss += diffusion_loss.detach() * batch_size
-            train_samples += batch_size
-            
             # Backward pass
             scaler_diffuser.scale(diffusion_loss).backward()
             scaler_diffuser.unscale_(optimizer_diffuser)
@@ -235,30 +286,52 @@ def training():
             scaler_diffuser.step(optimizer_diffuser)
             scaler_diffuser.update()
 
+            # Reduce losses across processes
+            reduced_vae_loss = reconstruction_loss.detach()
+            reduced_diff_loss = diffusion_loss.detach()
+            dist.all_reduce(reduced_vae_loss, op=dist.ReduceOp.SUM)
+            dist.all_reduce(reduced_diff_loss, op=dist.ReduceOp.SUM)
+            reduced_vae_loss /= world_size
+            reduced_diff_loss /= world_size
+
+            total_vae_loss += reduced_vae_loss.item()
+            total_diff_loss += reduced_diff_loss.item()
+
+        # Aggregate losses across all steps
+        avg_vae_loss = total_vae_loss / len(train_loader)
+        avg_diff_loss = total_diff_loss / len(train_loader)
+
+        # Store aggregated training losses
+        epoch_losses['train']['vae'].append(avg_vae_loss)
+        epoch_losses['train']['diffuser'].append(avg_diff_loss)
+
         # Validation loop
         vae.eval()
         diffuser.eval()
 
-        val_vae_epoch_loss = torch.tensor(0.0, device=device)
-        val_diffuser_epoch_loss = torch.tensor(0.0, device=device)
-        val_samples = torch.tensor(0, device=device)
+        val_vae_loss = 0.0
+        val_diff_loss = 0.0
 
         with torch.no_grad():
             for images, captions, _ in val_loader:
                 images = images.to(device)
                 captions = captions.to(device)
-                batch_size = images.shape[0]
 
                 # VAE forward pass: reconstruction loss
                 with torch.autocast(device_type=device, dtype=torch.float16):
                     latents = vae.module.encode(images).latent_dist.sample()
                     reconstructed_images = vae.module.decode(latents).sample
                     reconstruction_loss = F.mse_loss(reconstructed_images, images)
-                val_vae_epoch_loss += reconstruction_loss.detach() * batch_size
+
+                # Reduce validation loss
+                reduced_vae_loss = reconstruction_loss.detach()
+                dist.all_reduce(reduced_vae_loss, op=dist.ReduceOp.SUM)
+                reduced_vae_loss /= world_size
+                val_vae_loss += reduced_vae_loss.item()
 
                 # Normalize latents before passing to diffuser
                 latents = latents.detach() * 0.18215
-                
+
                 # Add noise
                 ts = torch.randint(0, T, (latents.shape[0],), device=device)
                 epsilons = torch.randn_like(latents, device=device)
@@ -268,38 +341,32 @@ def training():
                 with torch.autocast(device_type=device, dtype=torch.float16):
                     noise_pred = diffuser(noisy_latents, ts, encoder_hidden_states=captions, return_dict=False)[0]
                     diffusion_loss = F.mse_loss(noise_pred, epsilons, reduction="mean")
-                val_diffuser_epoch_loss += diffusion_loss.detach() * batch_size
-                val_samples += batch_size
 
-        # Aggregate metrics across all processes
-        dist.all_reduce(train_vae_epoch_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(train_diffuser_epoch_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(train_samples, op=dist.ReduceOp.SUM)
-        dist.all_reduce(val_vae_epoch_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(val_diffuser_epoch_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(val_samples, op=dist.ReduceOp.SUM)
+                # Reduce validation loss
+                reduced_diff_loss = diffusion_loss.detach()
+                dist.all_reduce(reduced_diff_loss, op=dist.ReduceOp.SUM)
+                reduced_diff_loss /= world_size
+                val_diff_loss += reduced_diff_loss.item()
 
-        # Calculate final metrics
-        train_vae_epoch_loss = (train_vae_epoch_loss / train_samples).item()
-        train_diffuser_epoch_loss = (train_diffuser_epoch_loss / train_samples).item()
-        val_vae_epoch_loss = (val_vae_epoch_loss / val_samples).item()
-        val_diffuser_epoch_loss = (val_diffuser_epoch_loss / val_samples).item()
+        # Aggregate validation losses
+        avg_val_vae_loss = val_vae_loss / len(val_loader)
+        avg_val_diff_loss = val_diff_loss / len(val_loader)
+
+        # Store aggregated validation losses
+        epoch_losses['val']['vae'].append(avg_val_vae_loss)
+        epoch_losses['val']['diffuser'].append(avg_val_diff_loss)
+
+        end_time = time.time()
 
         # Log metrics to MLflow
         if rank == 0:
-            mlflow.log_metric("train_vae_loss", train_vae_epoch_loss, step=epoch)
-            mlflow.log_metric("train_diffuser_loss", train_diffuser_epoch_loss, step=epoch)
-            mlflow.log_metric("val_vae_loss", val_vae_epoch_loss, step=epoch)
-            mlflow.log_metric("val_diffuser_loss", val_diffuser_epoch_loss, step=epoch)
-                
-        # Update scheduler
-        scheduler_vae.step()
-        scheduler_diffuser.step()
+            mlflow.log_metric("train_vae_loss", avg_vae_loss, step=epoch)
+            mlflow.log_metric("train_diffuser_loss", avg_diff_loss, step=epoch)
+            mlflow.log_metric("val_vae_loss", avg_val_vae_loss, step=epoch)
+            mlflow.log_metric("val_diffuser_loss", avg_val_diff_loss, step=epoch)
 
-        # Log epoch completion
-        if rank == 0:
-            print(f"Epoch {epoch + 1} - Train VAE: {train_vae_epoch_loss:.4f} | Val VAE: {val_vae_epoch_loss:.4f} | "
-                  f"Train Diff: {train_diffuser_epoch_loss:.4f} | Val Diff: {val_diffuser_epoch_loss:.4f}")
+            print(f"[Epoch {epoch+1}/{num_epochs}] Train: VAE={avg_vae_loss:.4f}, Diff={avg_diff_loss:.4f} | "
+                f"Val: VAE={avg_val_vae_loss:.4f}, Diff={avg_val_diff_loss:.4f} | Time: {(end_time - start_time):.2f}s")
 
     if rank == 0:
         mlflow.pytorch.log_model(vae.module, "vae", registered_model_name=registered_model_name)

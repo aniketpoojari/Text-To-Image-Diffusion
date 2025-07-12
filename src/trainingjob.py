@@ -52,41 +52,40 @@ def setup_training(config_path):
         "MLFLOW_TRACKING_PASSWORD": config['mlflow']['tracking_password'],
     }
 
-
     # Configure PyTorch estimator
     estimator = PyTorch(
-        entry_point=config['pytorch_estimator']['entry_point'], # training script inside code folder
-        source_dir=config['pytorch_estimator']['source_dir'], # folder containing the training code that is pushed to sagemaker training job instance
-        role=config['pytorch_estimator']['role'], # role to be used by the training job
-        framework_version=config['pytorch_estimator']['framework_version'], # pytorch version
-        py_version=config['pytorch_estimator']['py_version'], # python version
-        instance_count=config['pytorch_estimator']['instance_count'], # number of training instances for distributed training
-        instance_type=config['pytorch_estimator']['instance_type'], # instance type, use GPU instances
-        use_spot_instances=config['pytorch_estimator']['use_spot_instances'], # use spot instances for reduced cost
+        entry_point=config['pytorch_estimator']['entry_point'],
+        source_dir=config['pytorch_estimator']['source_dir'],
+        role=config['pytorch_estimator']['role'],
+        framework_version=config['pytorch_estimator']['framework_version'],
+        py_version=config['pytorch_estimator']['py_version'],
+        instance_count=config['pytorch_estimator']['instance_count'],
+        instance_type=config['pytorch_estimator']['instance_type'],
+        use_spot_instances=config['pytorch_estimator']['use_spot_instances'],
         max_wait=config['pytorch_estimator']['max_wait'],
         max_run=config['pytorch_estimator']['max_run'],
-        environment=environment, # environment variables that are captured by the training script
+        environment=environment,
         distribution={
-            "pytorchddp": {
-                "enabled": True,
-                "processes_per_host": 1 # GPU instances per training instance
+            "deepspeed": {
+                "enabled": True
             }
         }
     )
 
     # Define data channels
     data = {
-        'train': config['pytorch_estimator']['s3_train_data'], # training data that is pulled from s3 and into /opt/ml/input/data/train directory inside training instance
+        'train': config['pytorch_estimator']['s3_train_data'],
     }
     
-    # Start training
-    estimator.fit(inputs=data)
+    # Start training with less verbose logs
+    estimator.fit(inputs=data, logs="minimal")  # 'minimal' reduces log output
 
     # update the training completion time so that DVC can use that file to check whether the training step is complete
     with open("training_completion.txt", "w") as file:
         current_datetime = datetime.now()
         formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
         file.write("Training Completed at " + formatted_datetime)
+
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

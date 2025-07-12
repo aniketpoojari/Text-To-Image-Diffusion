@@ -13,12 +13,14 @@ class TextImageDataLoader(Dataset):
 
         self.datadir = datadir
         self.datalist = os.listdir(datadir + '/images')
+        # random.seed(42)
+        # random.shuffle(images_list)
         self.datalist = self.datalist[range[0]:range[0] + range[1]]
 
         self.image_size = image_size
         self.max_text_length = max_text_length
 
-        model_name = "openai/clip-vit-large-patch14"  # Or another CLIP model
+        model_name = "openai/clip-vit-base-patch32"  # Or another CLIP model
         self.tokenizer = CLIPTokenizer.from_pretrained(model_name)
         self.text_encoder = CLIPTextModel.from_pretrained(model_name).to("cuda")
 
@@ -42,10 +44,7 @@ class TextImageDataLoader(Dataset):
 
         # Load the text caption
         with open(f'{self.datadir}/captions/{comment_file}', 'r') as f:
-            text = f.readlines()
-
-        # select one line
-        text = random.choice(text)
+            text = f.read()
 
         # Tokenize the text
         tokens = self.tokenizer(

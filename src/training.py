@@ -16,19 +16,19 @@ def training(config_path):
     datadir = config['data']['raw']
     train_size = config['data']['train_size']
     val_size = config['data']['val_size']
-    vae_image_size = tuple(config['vae']['image_size'])
+    vae_image_size = tuple(config['vae']['image_size'].split(","))
     max_length = config['clip']['max_length']
     batch_size = config['training']['batch_size']
 
     T = config['DDPMScheduler']['T']
 
-    unet_image_size = tuple(config['unet']['image_size'])
+    unet_image_size = tuple(config['unet']['image_size'].split(","))
     in_channels = config['unet']['in_channels']
     out_channels = config['unet']['out_channels']
-    down_block_types = tuple(config['unet']['down_block_types'])
-    up_block_types = tuple(config['unet']['up_block_types'])
+    down_block_types = tuple(config['unet']['down_block_types'].split(","))
+    up_block_types = tuple(config['unet']['up_block_types'].split(","))
     mid_block_type = config['unet']['mid_block_type']
-    block_out_channels = tuple(config['unet']['block_out_channels'])
+    block_out_channels = tuple(config['unet']['block_out_channels'].split(","))
     layers_per_block = config['unet']['layers_per_block']
     norm_num_groups = config['unet']['norm_num_groups']
     cross_attention_dim = config['unet']['cross_attention_dim']
@@ -42,14 +42,15 @@ def training(config_path):
     weight_decay = float(config['training']['weight_decay'])
     num_epochs = config['training']['num_epochs']
 
-    experiment_name = config["mlflow_pretraining"]["experiment_name"]
-    run_name = config["mlflow_pretraining"]["run_name"]
-    registered_model_name = config["mlflow_pretraining"]["registered_model_name"]
-    server_uri = config["mlflow_pretraining"]["server_uri"]
+    experiment_name = config["mlflow"]["experiment_name"]
+    run_name = config["mlflow"]["run_name"]
+    registered_model_name = config["mlflow"]["registered_model_name"]
+    server_uri = config["mlflow"]["server_uri"]
     mlflow.set_tracking_uri(server_uri)
     mlflow.set_experiment(experiment_name=experiment_name)
 
     # INITIALIZE DATASETS AND DATALOADERS
+    print(datadir, train_size, val_size, vae_image_size, max_length, batch_size)
     train_dataset = TextImageDataLoader(datadir=datadir, range=(0, train_size), image_size=vae_image_size, max_text_length=max_length)
     val_dataset = TextImageDataLoader(datadir=datadir, range=(train_size, train_size + val_size), image_size=vae_image_size, max_text_length=max_length)
     train_loader = DataLoader(train_dataset, batch_size=batch_size)
