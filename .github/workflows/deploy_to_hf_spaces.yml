@@ -7,6 +7,7 @@ on:
     paths:
       - "saved_models/app.py"
       - "saved_models/requirements.txt"
+      - "saved_models/Dockerfile"
       - ".github/workflows/deploy_to_hf_spaces.yml"
 
 jobs:
@@ -38,14 +39,12 @@ jobs:
           api     = HfApi(token=token)
           repo_id = "aniketp2009gmail/text-to-image-flowers"
 
-          try:
-              create_repo(repo_id, repo_type="space", space_sdk="streamlit", exist_ok=True, token=token)
-              print(f"Space ready: {repo_id}")
-          except Exception as e:
-              print(f"Space already exists or could not be created: {e}")
+          create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True, token=token)
+          print(f"Space ready: {repo_id}")
 
-          api.upload_file(path_or_fileobj="saved_models/app.py",          path_in_repo="app.py",          repo_id=repo_id, repo_type="space")
-          api.upload_file(path_or_fileobj="saved_models/requirements.txt", path_in_repo="requirements.txt", repo_id=repo_id, repo_type="space")
+          api.upload_file(path_or_fileobj="saved_models/Dockerfile",       path_in_repo="Dockerfile",        repo_id=repo_id, repo_type="space")
+          api.upload_file(path_or_fileobj="saved_models/app.py",           path_in_repo="app.py",            repo_id=repo_id, repo_type="space")
+          api.upload_file(path_or_fileobj="saved_models/requirements.txt", path_in_repo="requirements.txt",  repo_id=repo_id, repo_type="space")
 
           api.add_space_variable(repo_id=repo_id, key="HF_MODEL_REPO", value="aniketp2009gmail/flower-diffusion")
 
