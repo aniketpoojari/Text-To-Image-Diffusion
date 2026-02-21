@@ -1,0 +1,9 @@
+streamlit
+torch
+diffusers
+transformers
+onnxruntime
+huggingface_hub
+Pillow
+numpy
+accelerate

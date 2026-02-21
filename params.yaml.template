@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# params.yaml.template
+#
+# Copy this file to params.yaml and fill in your credentials.
+# params.yaml is git-ignored; this template is committed to the repo.
+# ─────────────────────────────────────────────────────────────────────────────
+
+data:
+  raw: data/raw/flowers        # local directory with images/ and captions/
+  train_size: 500              # number of training samples
+  val_size: 50                 # number of validation samples
+
+clip:
+  max_length: 77               # CLIP token sequence length (fixed at 77 for ViT-L/14)
+
+vae:
+  image_size: "128,128"        # (H,W) input to VAE encoder
+
+DDPMScheduler:
+  T: 1000                      # total diffusion timesteps
+
+unet:
+  image_size: "16,16"          # latent grid size = vae_image_size / 8
+  in_channels: 4
+  out_channels: 4
+  down_block_types: CrossAttnDownBlock2D,DownBlock2D,CrossAttnDownBlock2D
+  up_block_types: CrossAttnUpBlock2D,UpBlock2D,CrossAttnUpBlock2D
+  mid_block_type: UNetMidBlock2DCrossAttn
+  block_out_channels: "64,128,256"
+  layers_per_block: 2
+  norm_num_groups: 32
+  cross_attention_dim: 512
+  attention_head_dim: 12
+  dropout: 0.1
+  time_embedding_type: positional
+  act_fn: silu
+
+training:
+  batch_size: 4
+  unet_learning_rate: "1e-4"
+  weight_decay: "1e-2"
+  num_epochs: 20
+
+mlflow:
+  server_uri: YOUR_DAGSHUB_MLFLOW_URI          # e.g. https://dagshub.com/user/repo.mlflow
+  experiment_name: Training
+  run_name: run_1
+  registered_model_name: Diffusion
+  tracking_username: YOUR_DAGSHUB_USERNAME
+  tracking_password: YOUR_DAGSHUB_TOKEN        # DagHub access token
+  s3_mlruns_bucket: YOUR_S3_BUCKET_NAME        # bucket name only, no s3:// prefix
+
+pytorch_estimator:
+  entry_point: training_sagemaker_deepspeed.py
+  source_dir: src/code
+  framework_version: "2.6.0"
+  py_version: py311
+  role: YOUR_SAGEMAKER_EXECUTION_ROLE_ARN      # arn:aws:iam::123456789:role/SageMakerRole
+  instance_count: 2
+  instance_type: ml.g4dn.xlarge
+  use_spot_instances: true
+  max_wait: 14400                              # seconds (4 hours)
+  max_run: 14400
+  s3_train_data: s3://YOUR_BUCKET/flowers.zip
+
+huggingface:
+  model_repo: YOUR_HF_USERNAME/text-to-image-diffusion  # auto-created by push_to_hub.py
+  token: YOUR_HF_TOKEN                                   # hf.co/settings/tokens
+
+log_trained_model:
+  diffuser_dir: saved_models/diffuser.pth

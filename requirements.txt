@@ -1,4 +1,33 @@
-PyYAML
-transformers
+# Core ML
 torch
+torchvision
+transformers
+diffusers
+accelerate
+
+# Distributed training (SageMaker)
+deepspeed
+sagemaker
+boto3
+
+# Pipeline & experiment tracking
+PyYAML
 dvc
+mlflow
+dagshub
+
+# HuggingFace Hub
+huggingface_hub
+
+# App
+streamlit
+
+# ONNX inference
+onnxruntime
+onnxruntime-gpu
+
+# Data processing
+Pillow
+tqdm
+numpy
+pandas

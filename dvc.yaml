@@ -1,20 +1,47 @@
 stages:
-  data-push:
-    cmd: aws s3 cp data/raw/flowers s3://text-to-image-diffusion-aniket --recursive
+  caption-generator:
+    cmd: python src/caption_generator.py --config=params.yaml
     deps:
-      - data/raw/flowers
-               
+      - src/caption_generator.py
+      - data/raw/flowers/images
+    params:
+      - data.raw
+    outs:
+      - data/raw/flowers/captions
+
+  precompute-embeddings:
+    cmd: python src/precompute_embeddings.py --config=params.yaml
+    deps:
+      - src/precompute_embeddings.py
+      - data/raw/flowers/images
+      - data/raw/flowers/captions
+    params:
+      - data.raw
+      - clip.max_length
+    outs:
+      - data/raw/flowers/embeddings
+
+  data-push:
+    cmd: python src/upload.py --config=params.yaml
+    deps:
+      - src/upload.py
+      - data/raw/flowers/images
+      - data/raw/flowers/captions
+      - data/raw/flowers/embeddings
+    params:
+      - data.raw
+      - pytorch_estimator.s3_train_data
+    outs:
+      - upload_completion.txt
+
   training:
-    # cmd: python src/training.py --config=params.yaml
     cmd: python src/trainingjob.py --config=params.yaml
     deps:
       - src/trainingjob.py
-      # - src/training.py
       - src/code/dataloader.py
-      - src/code/training_sagemaker.py
       - src/code/training_sagemaker_deepspeed.py
+      - upload_completion.txt
     params:
-      # - data.raw
       - data.train_size
       - data.val_size
       - clip.max_length
@@ -35,7 +62,6 @@ stages:
       - unet.time_embedding_type
       - unet.act_fn
       - training.batch_size
-      - training.vae_learning_rate
       - training.unet_learning_rate
       - training.weight_decay
       - training.num_epochs
@@ -69,7 +95,47 @@ stages:
       - mlflow.server_uri
       - mlflow.experiment_name
       - mlflow.s3_mlruns_bucket
-
+      - log_trained_model.diffuser_dir
     outs:
-      - saved_models/vae.pth
       - saved_models/diffuser.pth
+      - saved_models/model_metadata.json
+
+  evaluate:
+    cmd: python src/evaluate.py --config=params.yaml
+    deps:
+      - src/evaluate.py
+      - saved_models/diffuser.pth
+    params:
+      - log_trained_model.diffuser_dir
+    outs:
+      - evaluation_results.json
+
+  onnx_convert:
+    cmd: python src/onnx_converter.py
+    deps:
+      - src/onnx_converter.py
+      - saved_models/diffuser.pth
+      - evaluation_results.json
+    outs:
+      - saved_models/onnx_models
+
+  tensorrt_convert:
+    cmd: python src/tensorrt_converter.py
+    deps:
+      - src/tensorrt_converter.py
+      - saved_models/onnx_models
+    outs:
+      - saved_models/trt_models
+
+  push_to_hub:
+    cmd: python src/push_to_hub.py --config=params.yaml
+    deps:
+      - src/push_to_hub.py
+      - saved_models/diffuser.pth
+      - saved_models/onnx_models
+      - saved_models/trt_models
+      - evaluation_results.json
+    params:
+      - huggingface.model_repo
+    outs:
+      - push_completion.txt

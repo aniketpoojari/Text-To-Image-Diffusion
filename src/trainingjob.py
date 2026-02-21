@@ -37,7 +37,6 @@ def setup_training(config_path):
         "TIME_EMBEDDING_TYPE": config['unet']['time_embedding_type'],
         "ACT_FN": config['unet']['act_fn'],
         
-        "VAE_LEARNING_RATE": config['training']['vae_learning_rate'],
         "UNET_LEARNING_RATE": config['training']['unet_learning_rate'],
         "WEIGHT_DECAY": config['training']['weight_decay'],
         "NUM_EPOCHS": str(config['training']['num_epochs']),

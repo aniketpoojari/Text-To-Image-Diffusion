@@ -1,4 +1,9 @@
+/.vscode/
 /training_completion.txt
 /mlflow.db
 /mlruns/*
 /params.yaml
+/push_completion.txt
+/upload_completion.txt
+/saved_models/model_metadata.json
+/evaluation_results.json

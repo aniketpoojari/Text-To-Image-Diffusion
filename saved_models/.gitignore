@@ -1,3 +1,5 @@
 /vae.pth
 /diffuser.pth
 /onnx_models/*
+/trt_models/*
+/temp/

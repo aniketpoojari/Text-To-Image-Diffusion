@@ -1,9 +1,24 @@
 from common import read_params
 import argparse
+import json
+import os
+from datetime import datetime
 import mlflow
 import pandas as pd
-import shutil
 import boto3
+from botocore.exceptions import ClientError
+
+
+METADATA_PATH = "saved_models/model_metadata.json"
+
+
+def get_current_best_loss():
+    """Return the val_diffuser_loss of the currently saved model, or inf if none."""
+    if os.path.exists(METADATA_PATH):
+        with open(METADATA_PATH) as f:
+            metadata = json.load(f)
+        return float(metadata.get("val_diffuser_loss", float("inf")))
+    return float("inf")
 
 
 def log_production_model(config_path):
@@ -11,47 +26,71 @@ def log_production_model(config_path):
 
     server_uri = config["mlflow"]["server_uri"]
     experiment_name = config["mlflow"]["experiment_name"]
-    s3_mlruns_bucket = config["mlflow"]["s3_mlruns_bucket"] + "/"
+    s3_bucket = config["mlflow"]["s3_mlruns_bucket"]
+    diffuser_dest = config["log_trained_model"]["diffuser_dir"]
 
     mlflow.set_tracking_uri(server_uri)
 
-    # get experiment id
-    experiment_id = mlflow.get_experiment_by_name(experiment_name).experiment_id
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        raise ValueError(f"Experiment '{experiment_name}' not found in MLflow.")
 
-    # get best model
-    df = pd.DataFrame(mlflow.search_runs(experiment_ids=experiment_id))
-    # df = df[df["status"] == "FINISHED"]
+    # Find the best finished run sorted by lowest val_diffuser_loss
+    runs_df = pd.DataFrame(
+        mlflow.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            filter_string="status = 'FINISHED'",
+            order_by=["metrics.val_diffuser_loss ASC"],
+        )
+    )
 
-    run_id = "ed0d4b64731641b1ae0fade3d6ea5cf8"
+    if runs_df.empty:
+        raise ValueError("No finished runs found in MLflow. Train the model first.")
 
-    if run_id:
-        vae_src = run_id + "/vae.pth"
-        diffuser_src = run_id + "/diffuser.pth"
+    # Find the best run that actually has a model uploaded to S3.
+    # Old runs that predate the S3-upload step are skipped automatically.
+    s3 = boto3.client("s3")
+    best_run = best_loss = run_id = None
+    for _, row in runs_df.iterrows():
+        rid  = row["run_id"]
+        loss = float(row.get("metrics.val_diffuser_loss", float("inf")))
+        try:
+            s3.head_object(Bucket=s3_bucket, Key=f"{rid}/diffuser.pth")
+            run_id    = rid
+            best_loss = loss
+            best_run  = row
+            break
+        except ClientError:
+            print(f"  Skipping run {rid}: no model in S3.")
 
-    else:
+    if best_run is None:
+        raise ValueError("No finished run has a model in S3. Train the model first.")
 
-        vae = df[df['run_id'] == run_id]  #df[df["metrics.val_vae_loss"] == df["metrics.val_vae_loss"].min()]
-        vae_src = vae['artifact_uri'].values[0].split(s3_mlruns_bucket)[1] + "/vae/data/model.pth"
+    current_loss = get_current_best_loss()
 
-        diffuser = df[df['run_id'] == run_id]  #df[df["metrics.val_diffuser_loss"] == df["metrics.val_diffuser_loss"].min()]
-        diffuser_src = diffuser['artifact_uri'].values[0].split(s3_mlruns_bucket)[1] + "/diffuser/data/model.pth"
+    print(f"Best run : {run_id}  (val_diffuser_loss={best_loss:.4f})")
+    print(f"Saved    : val_diffuser_loss={current_loss:.4f}")
 
-        # print(vae_src)
-        # print(diffuser_src)
+    if best_loss >= current_loss:
+        print("No improvement detected — skipping download. Downstream stages will not re-run.")
+        return
 
-    # copy model
-    vae_dest = config["log_trained_model"]["vae_dir"]
-    diffuser_dest = config["log_trained_model"]["diffuser_dir"]
-    # shutil.copyfile(vae_src, vae_dest)
-    # shutil.copyfile(diffuser_src, diffuser_dest)
+    print(f"Improvement found ({current_loss:.4f} → {best_loss:.4f}). Downloading model...")
 
-    s3 = boto3.client('s3')
+    os.makedirs(os.path.dirname(diffuser_dest), exist_ok=True)
 
-    bucket_name = config["mlflow"]["s3_mlruns_bucket"]
-    
-    # Download file
-    s3.download_file(bucket_name, vae_src, vae_dest)
-    s3.download_file(bucket_name, diffuser_src, diffuser_dest)
+    s3_key = f"{run_id}/diffuser.pth"
+    s3.download_file(s3_bucket, s3_key, diffuser_dest)
+    print(f"Downloaded s3://{s3_bucket}/{s3_key} → {diffuser_dest}")
+
+    metadata = {
+        "run_id": run_id,
+        "val_diffuser_loss": best_loss,
+        "downloaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    with open(METADATA_PATH, "w") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Saved metadata to {METADATA_PATH}")
 
 
 if __name__ == "__main__":

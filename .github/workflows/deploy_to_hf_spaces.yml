@@ -1,0 +1,50 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "saved_models/app.py"
+      - "saved_models/requirements.txt"
+      - ".github/workflows/deploy_to_hf_spaces.yml"
+
+jobs:
+  deploy:
+    name: Push app to HF Spaces
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
+
+      - name: Deploy to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          huggingface-cli repo create aniketp2009gmail/text-to-image-flowers --type space --space_sdk streamlit || true
+          huggingface-cli upload aniketp2009gmail/text-to-image-flowers saved_models/app.py app.py --repo-type space
+          huggingface-cli upload aniketp2009gmail/text-to-image-flowers saved_models/requirements.txt requirements.txt --repo-type space
+
+      - name: Set HF_MODEL_REPO Space variable
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import os
+          from huggingface_hub import HfApi
+          HfApi(token=os.environ["HF_TOKEN"]).add_space_variable(
+              repo_id="aniketp2009gmail/text-to-image-flowers",
+              key="HF_MODEL_REPO",
+              value="aniketp2009gmail/flower-diffusion",
+          )
+          print("HF_MODEL_REPO set on Space.")
+          EOF
