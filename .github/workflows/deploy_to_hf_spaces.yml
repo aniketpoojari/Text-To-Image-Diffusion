@@ -30,21 +30,20 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          huggingface-cli repo create aniketp2009gmail/text-to-image-flowers --type space --space_sdk streamlit || true
-          huggingface-cli upload aniketp2009gmail/text-to-image-flowers saved_models/app.py app.py --repo-type space
-          huggingface-cli upload aniketp2009gmail/text-to-image-flowers saved_models/requirements.txt requirements.txt --repo-type space
-
-      - name: Set HF_MODEL_REPO Space variable
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
           python - <<'EOF'
           import os
-          from huggingface_hub import HfApi
-          HfApi(token=os.environ["HF_TOKEN"]).add_space_variable(
-              repo_id="aniketp2009gmail/text-to-image-flowers",
-              key="HF_MODEL_REPO",
-              value="aniketp2009gmail/flower-diffusion",
-          )
-          print("HF_MODEL_REPO set on Space.")
+          from huggingface_hub import HfApi, create_repo
+
+          token   = os.environ["HF_TOKEN"]
+          api     = HfApi(token=token)
+          repo_id = "aniketp2009gmail/text-to-image-flowers"
+
+          create_repo(repo_id, repo_type="space", space_sdk="streamlit", exist_ok=True, token=token)
+
+          api.upload_file(path_or_fileobj="saved_models/app.py",          path_in_repo="app.py",          repo_id=repo_id, repo_type="space")
+          api.upload_file(path_or_fileobj="saved_models/requirements.txt", path_in_repo="requirements.txt", repo_id=repo_id, repo_type="space")
+
+          api.add_space_variable(repo_id=repo_id, key="HF_MODEL_REPO", value="aniketp2009gmail/flower-diffusion")
+
+          print(f"Deployed to https://huggingface.co/spaces/{repo_id}")
           EOF
