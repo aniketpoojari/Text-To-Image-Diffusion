@@ -38,7 +38,11 @@ jobs:
           api     = HfApi(token=token)
           repo_id = "aniketp2009gmail/text-to-image-flowers"
 
-          create_repo(repo_id, repo_type="space", space_sdk="streamlit", exist_ok=True, token=token)
+          try:
+              create_repo(repo_id, repo_type="space", space_sdk="streamlit", exist_ok=True, token=token)
+              print(f"Space ready: {repo_id}")
+          except Exception as e:
+              print(f"Space already exists or could not be created: {e}")
 
           api.upload_file(path_or_fileobj="saved_models/app.py",          path_in_repo="app.py",          repo_id=repo_id, repo_type="space")
           api.upload_file(path_or_fileobj="saved_models/requirements.txt", path_in_repo="requirements.txt", repo_id=repo_id, repo_type="space")
