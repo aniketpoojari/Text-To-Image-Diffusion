@@ -252,6 +252,8 @@ def generate_image(prompt, cfg_scale, steps, models, method):
     status = st.empty()
     preview_placeholder = st.empty()
 
+    mid_img = None
+
     with torch.no_grad():
         for i, t in enumerate(scheduler.timesteps):
             lat_in = torch.cat([latents, latents])
@@ -282,17 +284,19 @@ def generate_image(prompt, cfg_scale, steps, models, method):
             progress_bar.progress((i + 1) / steps)
             status.write(f"Step {i + 1}/{steps}")
 
-            # Show a preview every 10 steps
-            if (i + 1) % 10 == 0 or i == steps - 1:
-                img = decode_preview(latents.clone(), method, models)
-                if img is not None:
-                    preview_placeholder.image(img, caption=f"Step {i + 1}/{steps}", width=400)
+            # Update preview every step
+            img = decode_preview(latents.clone(), method, models)
+            if img is not None:
+                preview_placeholder.image(img, caption=f"Step {i + 1}/{steps}", width=400)
+                if i == steps // 2 - 1:
+                    mid_img = img
 
     progress_bar.empty()
     status.empty()
+    preview_placeholder.empty()
 
     final = decode_preview(latents, method, models)
-    return final
+    return mid_img, final
 
 
 # ── Streamlit UI ──────────────────────────────────────────────────────────────
@@ -340,11 +344,14 @@ prompt = st.text_input("Prompt", placeholder="A red rose with water droplets on 
 
 if st.button("Generate", type="primary") and prompt.strip():
     t0 = time.time()
-    img = generate_image(prompt, cfg_scale, steps, models, method)
+    mid_img, final_img = generate_image(prompt, cfg_scale, steps, models, method)
     elapsed = time.time() - t0
 
-    if img is not None:
+    if final_img is not None:
         st.success(f"Generated in {elapsed:.1f}s  |  {method.upper()} · DDIM {steps} steps · CFG {cfg_scale}")
-        st.image(img, caption=prompt, width=400)
+        col1, col2 = st.columns(2)
+        if mid_img is not None:
+            col1.image(mid_img, caption=f"Halfway (step {steps // 2}/{steps})", use_container_width=True)
+        col2.image(final_img, caption=f"Final (step {steps}/{steps})", use_container_width=True)
     else:
         st.error("Generation failed. Check model files and try again.")
