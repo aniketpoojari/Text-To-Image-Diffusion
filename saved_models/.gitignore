@@ -3,3 +3,5 @@
 /onnx_models/*
 /trt_models/*
 /temp/
+/onnx_models
+/trt_models

@@ -1,72 +1,5 @@
 schema: '2.0'
 stages:
-  training:
-    cmd: python src/trainingjob.py --config=params.yaml
-    deps:
-    - path: src/code/dataloader.py
-      hash: md5
-      md5: 161b3b04b8ec49a7ee04792ae0248ed1
-      size: 6458
-    - path: src/code/training_sagemaker_deepspeed.py
-      hash: md5
-      md5: 3e62f6bc485314bf9d4946462d7b8638
-      size: 18396
-    - path: src/trainingjob.py
-      hash: md5
-      md5: 0731048f8bdb81944458cbd90552bf0d
-      size: 4056
-    - path: upload_completion.txt
-      hash: md5
-      md5: 0538a7d2d51b3879d20b818faab3ca35
-      size: 141
-    params:
-      params.yaml:
-        DDPMScheduler.T: 1000
-        clip.max_length: 77
-        data.train_size: 60
-        data.val_size: 6
-        mlflow.experiment_name: Training Diffusion 5
-        mlflow.registered_model_name: Diffusion
-        mlflow.run_name: 1st
-        mlflow.s3_mlruns_bucket: text-to-image-aniket-mlflow
-        mlflow.server_uri: https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow
-        mlflow.tracking_password: 38fa619a54d7cdde5e6dcaa55a01a1c14f329bc2
-        mlflow.tracking_username: aniketpoojari
-        pytorch_estimator.entry_point: training_sagemaker_deepspeed.py
-        pytorch_estimator.framework_version: 2.6.0
-        pytorch_estimator.instance_count: 2
-        pytorch_estimator.instance_type: ml.g4dn.xlarge
-        pytorch_estimator.max_run: 14400
-        pytorch_estimator.max_wait: 14400
-        pytorch_estimator.py_version: py312
-        pytorch_estimator.role: arn:aws:iam::975050169307:role/text-to-image-role
-        pytorch_estimator.s3_train_data: s3://text-to-image-aniket
-        pytorch_estimator.source_dir: src/code
-        pytorch_estimator.use_spot_instances: true
-        training.batch_size: 16
-        training.num_epochs: 1
-        training.unet_learning_rate: 0.0001
-        training.weight_decay: 0.01
-        unet.act_fn: silu
-        unet.attention_head_dim: 96
-        unet.block_out_channels: 128,256,512
-        unet.cross_attention_dim: 768
-        unet.down_block_types: DownBlock2D,CrossAttnDownBlock2D,CrossAttnDownBlock2D
-        unet.dropout: 0.1
-        unet.image_size: 32,32
-        unet.in_channels: 4
-        unet.layers_per_block: 2
-        unet.mid_block_type: UNetMidBlock2DCrossAttn
-        unet.norm_num_groups: 32
-        unet.out_channels: 4
-        unet.time_embedding_type: positional
-        unet.up_block_types: CrossAttnUpBlock2D,CrossAttnUpBlock2D,UpBlock2D
-        vae.image_size: 256,256
-    outs:
-    - path: training_completion.txt
-      hash: md5
-      md5: bf4e68a44f16ede602d7c3aa58eabeea
-      size: 41
   log_training_model:
     cmd: python src/log_training_model.py --config=params.yaml
     deps:
@@ -76,23 +9,23 @@ stages:
       size: 3488
     - path: training_completion.txt
       hash: md5
-      md5: bf4e68a44f16ede602d7c3aa58eabeea
+      md5: 08e07287c486b7a21100c0d73e73b45c
       size: 41
     params:
       params.yaml:
         log_trained_model.diffuser_dir: saved_models/diffuser.pth
-        mlflow.experiment_name: Training Diffusion 5
+        mlflow.experiment_name: Training Diffusion Full
         mlflow.s3_mlruns_bucket: text-to-image-aniket-mlflow
         mlflow.server_uri: https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow
     outs:
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 50e6419d6d1208255be9da4c40cc7aeb
+      md5: 519d2c07b9830926dd263e62cbb83a44
       size: 376840262
     - path: saved_models/model_metadata.json
       hash: md5
-      md5: 2b16b37dacc7c3ff00368464f1b87a25
-      size: 140
+      md5: 3c30b18123b22e827876a67b6849cd83
+      size: 139
   data-push:
     cmd: python src/upload.py --config=params.yaml
     deps:
@@ -223,7 +156,7 @@ stages:
     deps:
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 50e6419d6d1208255be9da4c40cc7aeb
+      md5: 519d2c07b9830926dd263e62cbb83a44
       size: 376840262
     - path: src/evaluate.py
       hash: md5
@@ -235,18 +168,18 @@ stages:
     outs:
     - path: evaluation_results.json
       hash: md5
-      md5: f7b5ae39796da11acd450484b7c0f6c2
+      md5: 72ff31b3784b344fda16e2b5bffdba0d
       size: 936
   onnx_convert:
     cmd: python src/onnx_converter.py
     deps:
     - path: evaluation_results.json
       hash: md5
-      md5: f7b5ae39796da11acd450484b7c0f6c2
+      md5: 72ff31b3784b344fda16e2b5bffdba0d
       size: 936
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 50e6419d6d1208255be9da4c40cc7aeb
+      md5: 519d2c07b9830926dd263e62cbb83a44
       size: 376840262
     - path: src/onnx_converter.py
       hash: md5
@@ -255,16 +188,16 @@ stages:
     outs:
     - path: saved_models/onnx_models
       hash: md5
-      md5: f85baea00c72c0c927006e546f56b637.dir
-      size: 1067802496
+      md5: d3992eb44038890b544e1386f5298c4c.dir
+      size: 1067703877
       nfiles: 3
   tensorrt_convert:
     cmd: python src/tensorrt_converter.py
     deps:
     - path: saved_models/onnx_models
       hash: md5
-      md5: f85baea00c72c0c927006e546f56b637.dir
-      size: 1067802496
+      md5: d3992eb44038890b544e1386f5298c4c.dir
+      size: 1067703877
       nfiles: 3
     - path: src/tensorrt_converter.py
       hash: md5
@@ -273,29 +206,29 @@ stages:
     outs:
     - path: saved_models/trt_models
       hash: md5
-      md5: 3c7daf7f71580ae1aaac3e5587e1f353.dir
-      size: 561596452
+      md5: 6f25bc3ded70da32483945200634ded0.dir
+      size: 562958308
       nfiles: 3
   push_to_hub:
     cmd: python src/push_to_hub.py --config=params.yaml
     deps:
     - path: evaluation_results.json
       hash: md5
-      md5: f7b5ae39796da11acd450484b7c0f6c2
+      md5: 72ff31b3784b344fda16e2b5bffdba0d
       size: 936
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 50e6419d6d1208255be9da4c40cc7aeb
+      md5: 519d2c07b9830926dd263e62cbb83a44
       size: 376840262
     - path: saved_models/onnx_models
       hash: md5
-      md5: f85baea00c72c0c927006e546f56b637.dir
-      size: 1067802496
+      md5: d3992eb44038890b544e1386f5298c4c.dir
+      size: 1067703877
       nfiles: 3
     - path: saved_models/trt_models
       hash: md5
-      md5: 3c7daf7f71580ae1aaac3e5587e1f353.dir
-      size: 561596452
+      md5: 6f25bc3ded70da32483945200634ded0.dir
+      size: 562958308
       nfiles: 3
     - path: src/push_to_hub.py
       hash: md5
@@ -307,5 +240,72 @@ stages:
     outs:
     - path: push_completion.txt
       hash: md5
-      md5: 2fdbfeb78805ed4478d63526ec724816
+      md5: 1b551942f143408c8887f4e2c61547db
       size: 194
+  training:
+    cmd: python src/trainingjob.py --config=params.yaml
+    deps:
+    - path: src/code/dataloader.py
+      hash: md5
+      md5: 161b3b04b8ec49a7ee04792ae0248ed1
+      size: 6458
+    - path: src/code/training_sagemaker_deepspeed.py
+      hash: md5
+      md5: d767fcd03d02d24ede6a109b879b5673
+      size: 22658
+    - path: src/trainingjob.py
+      hash: md5
+      md5: 24b5f1540804b5e2f980b05aa3156746
+      size: 5921
+    - path: upload_completion.txt
+      hash: md5
+      md5: 0538a7d2d51b3879d20b818faab3ca35
+      size: 141
+    params:
+      params.yaml:
+        DDPMScheduler.T: 1000
+        clip.max_length: 77
+        data.train_size: 7370
+        data.val_size: 819
+        mlflow.experiment_name: Training Diffusion Full
+        mlflow.registered_model_name: Diffusion
+        mlflow.run_name: full-data-25ep
+        mlflow.s3_mlruns_bucket: text-to-image-aniket-mlflow
+        mlflow.server_uri: https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow
+        mlflow.tracking_password: 38fa619a54d7cdde5e6dcaa55a01a1c14f329bc2
+        mlflow.tracking_username: aniketpoojari
+        pytorch_estimator.entry_point: training_sagemaker_deepspeed.py
+        pytorch_estimator.framework_version: 2.6.0
+        pytorch_estimator.instance_count: 2
+        pytorch_estimator.instance_type: ml.g4dn.xlarge
+        pytorch_estimator.max_run: 14400
+        pytorch_estimator.max_wait: 14400
+        pytorch_estimator.py_version: py312
+        pytorch_estimator.role: arn:aws:iam::975050169307:role/text-to-image-role
+        pytorch_estimator.s3_train_data: s3://text-to-image-aniket
+        pytorch_estimator.source_dir: src/code
+        pytorch_estimator.use_spot_instances: true
+        training.batch_size: 32
+        training.num_epochs: 10
+        training.unet_learning_rate: 0.0001
+        training.weight_decay: 0.01
+        unet.act_fn: silu
+        unet.attention_head_dim: 96
+        unet.block_out_channels: 128,256,512
+        unet.cross_attention_dim: 768
+        unet.down_block_types: DownBlock2D,CrossAttnDownBlock2D,CrossAttnDownBlock2D
+        unet.dropout: 0.1
+        unet.image_size: 32,32
+        unet.in_channels: 4
+        unet.layers_per_block: 2
+        unet.mid_block_type: UNetMidBlock2DCrossAttn
+        unet.norm_num_groups: 32
+        unet.out_channels: 4
+        unet.time_embedding_type: positional
+        unet.up_block_types: CrossAttnUpBlock2D,CrossAttnUpBlock2D,UpBlock2D
+        vae.image_size: 256,256
+    outs:
+    - path: training_completion.txt
+      hash: md5
+      md5: 08e07287c486b7a21100c0d73e73b45c
+      size: 41

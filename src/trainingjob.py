@@ -51,6 +51,36 @@ def setup_training(config_path):
         "MLFLOW_TRACKING_PASSWORD": config['mlflow']['tracking_password'],
     }
 
+    # SageMaker parses these regex patterns from CloudWatch logs
+    # and displays them as live charts in the training job console
+    metric_definitions = [
+        # per-epoch losses
+        {"Name": "train:loss",       "Regex": r"Train loss : ([0-9.]+)"},
+        {"Name": "val:loss",         "Regex": r"Val loss: ([0-9.]+)"},
+        {"Name": "epoch:time_s",     "Regex": r"Epoch time : ([0-9.]+)s"},
+        # per-batch metrics
+        {"Name": "batch:loss",       "Regex": r"Loss ([0-9.]+) \|"},
+        {"Name": "batch:imgs_s",     "Regex": r"([0-9.]+) imgs/s"},
+        {"Name": "batch:data_ms",    "Regex": r"data +([0-9.]+)ms  vae"},
+        {"Name": "batch:vae_ms",     "Regex": r"vae +([0-9.]+)ms  unet"},
+        {"Name": "batch:unet_ms",    "Regex": r"unet +([0-9.]+)ms  bwd"},
+        {"Name": "batch:bwd_ms",     "Regex": r"bwd +([0-9.]+)ms  batch"},
+        {"Name": "batch:total_ms",   "Regex": r"batch +([0-9.]+)ms \|"},
+        {"Name": "batch:overall_pct","Regex": r"Overall +([0-9.]+)%"},
+        # avg timings from epoch summary
+        {"Name": "avg:data_ms",      "Regex": r"Avg/batch.*data ([0-9.]+)ms"},
+        {"Name": "avg:vae_ms",       "Regex": r"Avg/batch.*vae ([0-9.]+)ms"},
+        {"Name": "avg:unet_ms",      "Regex": r"Avg/batch.*unet ([0-9.]+)ms"},
+        {"Name": "avg:bwd_ms",       "Regex": r"Avg/batch.*bwd ([0-9.]+)ms"},
+        {"Name": "avg:total_ms",     "Regex": r"Avg/batch.*total ([0-9.]+)ms"},
+        # GPU memory
+        {"Name": "gpu:allocated_gb", "Regex": r"Allocated: ([0-9.]+)GB"},
+        {"Name": "gpu:cached_gb",    "Regex": r"Cached: ([0-9.]+)GB"},
+        # early stopping
+        {"Name": "best_val",         "Regex": r"best_val: ([0-9.]+)"},
+        {"Name": "patience",         "Regex": r"patience: ([0-9]+)/"},
+    ]
+
     # Configure PyTorch estimator
     estimator = PyTorch(
         entry_point=config['pytorch_estimator']['entry_point'],
@@ -64,6 +94,7 @@ def setup_training(config_path):
         max_wait=config['pytorch_estimator']['max_wait'],
         max_run=config['pytorch_estimator']['max_run'],
         environment=environment,
+        metric_definitions=metric_definitions,
         distribution={
             "deepspeed": {
                 "enabled": True

@@ -126,6 +126,7 @@ def training():
     rank, world_size, local_rank = setup_distributed()
     device = torch.device(f"cuda:{local_rank}")
     torch.cuda.empty_cache()
+    torch.backends.cudnn.benchmark = True  # auto-tune conv algorithms for fixed input shapes
 
     # Environment variables
     train_size = int(os.getenv("TRAIN_SIZE", "300"))
@@ -204,15 +205,13 @@ def training():
         val_dataset, num_replicas=world_size, rank=rank, shuffle=False
     )
 
-    # num_workers=4 is now safe because __getitem__ no longer calls CUDA
-    # (CLIP embeddings are precomputed to disk in the dataset constructor).
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, sampler=train_sampler,
-        num_workers=4, pin_memory=True, prefetch_factor=2,
+        num_workers=4, pin_memory=True, prefetch_factor=4, persistent_workers=True,
     )
     val_loader = DataLoader(
         val_dataset, batch_size=batch_size, sampler=val_sampler,
-        num_workers=4, pin_memory=True, prefetch_factor=2,
+        num_workers=4, pin_memory=True, prefetch_factor=4, persistent_workers=True,
     )
 
     noise_scheduler = DDPMScheduler(
@@ -286,31 +285,52 @@ def training():
     # EMA — maintained on rank 0 only (rank 0 has all parameters with ZeRO-2)
     ema = EMA(model_diffuser.module, decay=0.9999) if rank == 0 else None
 
+    PATIENCE = 5
+    best_val_loss = float('inf')
+    epochs_without_improvement = 0
+    n_batches = len(train_loader)
+
     if rank == 0:
-        print(f"\nStarting training — {num_epochs} epochs, {world_size} GPUs\n")
+        print(f"\nStarting training — {num_epochs} epochs, {world_size} GPUs, early stopping patience={PATIENCE}")
+        print(f"Batches/epoch (per GPU): {n_batches}  |  Global imgs/epoch: {train_size}")
         print(
             f"GPU memory — Allocated: {torch.cuda.memory_allocated()/1e9:.2f}GB  "
-            f"Cached: {torch.cuda.memory_reserved()/1e9:.2f}GB"
+            f"Cached: {torch.cuda.memory_reserved()/1e9:.2f}GB\n"
         )
 
     # ── Training loop ─────────────────────────────────────────────────────────
     for epoch in range(num_epochs):
-        if rank == 0:
-            print(f"\nEpoch {epoch+1}/{num_epochs}")
-
         train_sampler.set_epoch(epoch)
-        start_time = time.time()
+        epoch_start = time.time()
 
         model_vae.eval()
         model_diffuser.train()
         total_epoch_diff_loss = 0.0
 
-        for images, captions in train_loader:
+        acc_data = acc_vae = acc_unet = acc_bwd = 0.0
+
+        LOG_EVERY = 10
+        global_batches_done = epoch * n_batches
+        total_batches_all = n_batches * num_epochs
+
+        data_start = time.time()
+
+        for batch_idx, (images, captions) in enumerate(train_loader):
+            torch.cuda.synchronize()
+            t_data = time.time() - data_start
+
+            batch_start = time.time()
+
             images   = images.to(device, dtype=torch.float16, non_blocking=True)
             captions = captions.to(device, dtype=torch.float16, non_blocking=True)
 
+            # ── VAE encode ────────────────────────────────────────────────────
+            torch.cuda.synchronize()
+            t0 = time.time()
             with torch.no_grad():
                 latents = model_vae.encode(images).latent_dist.sample()
+            torch.cuda.synchronize()
+            t_vae = time.time() - t0
 
             latents = latents.detach() * 0.18215
             ts = torch.randint(0, T, (latents.shape[0],), device=device)
@@ -326,23 +346,61 @@ def training():
             else:
                 encoder_hidden_states = captions
 
+            # ── UNet forward ──────────────────────────────────────────────────
+            torch.cuda.synchronize()
+            t0 = time.time()
             noise_pred = model_diffuser(
                 noisy_latents, ts,
                 encoder_hidden_states=encoder_hidden_states,
                 return_dict=False,
             )[0]
+            torch.cuda.synchronize()
+            t_unet = time.time() - t0
+
             batch_diff_loss = F.mse_loss(noise_pred, epsilons)
 
+            # ── Backward + step ───────────────────────────────────────────────
+            torch.cuda.synchronize()
+            t0 = time.time()
             model_diffuser.backward(batch_diff_loss)
             model_diffuser.step()
+            torch.cuda.synchronize()
+            t_bwd = time.time() - t0
 
-            # Update EMA after every gradient step (rank 0 only)
             if rank == 0:
                 ema.update(model_diffuser.module)
 
             total_epoch_diff_loss += batch_diff_loss.item()
+            acc_data += t_data
+            acc_vae  += t_vae
+            acc_unet += t_unet
+            acc_bwd  += t_bwd
 
-        avg_train_loss = total_epoch_diff_loss / len(train_loader)
+            torch.cuda.synchronize()
+            t_batch = time.time() - batch_start
+            imgs_per_sec = batch_size * world_size / t_batch
+
+            if rank == 0:
+                global_batches_done += 1
+                overall_pct = 100.0 * global_batches_done / total_batches_all
+
+                if (batch_idx + 1) % LOG_EVERY == 0 or batch_idx == n_batches - 1:
+                    print(
+                        f"  Ep {epoch+1:>3}/{num_epochs} | "
+                        f"Batch {batch_idx+1:>4}/{n_batches} | "
+                        f"Overall {overall_pct:5.1f}% | "
+                        f"Loss {batch_diff_loss.item():.4f} | "
+                        f"data {t_data*1e3:5.1f}ms  "
+                        f"vae {t_vae*1e3:5.1f}ms  "
+                        f"unet {t_unet*1e3:5.1f}ms  "
+                        f"bwd {t_bwd*1e3:5.1f}ms  "
+                        f"batch {t_batch*1e3:6.1f}ms | "
+                        f"{imgs_per_sec:5.1f} imgs/s"
+                    )
+
+            data_start = time.time()
+
+        avg_train_loss = total_epoch_diff_loss / n_batches
 
         # Reduce train loss across ranks
         train_loss_t = torch.tensor([avg_train_loss], device=device)
@@ -378,16 +436,42 @@ def training():
         torch.distributed.all_reduce(val_loss_t, op=torch.distributed.ReduceOp.SUM)
         val_loss_t /= world_size
 
-        end_time = time.time()
+        epoch_time = time.time() - epoch_start
 
         if rank == 0:
             mlflow.log_metric("train_diffuser_loss", train_loss_t.item(), step=epoch)
             mlflow.log_metric("val_diffuser_loss",   val_loss_t.item(),   step=epoch)
             print(
-                f"  Train: {train_loss_t.item():.4f}  "
-                f"Val: {val_loss_t.item():.4f}  "
-                f"Time: {end_time - start_time:.1f}s"
+                f"\n  ── Epoch {epoch+1}/{num_epochs} summary ──\n"
+                f"  Train loss : {train_loss_t.item():.4f}  |  Val loss: {val_loss_t.item():.4f}\n"
+                f"  Epoch time : {epoch_time:.1f}s\n"
+                f"  Avg/batch  — "
+                f"data {acc_data/n_batches*1e3:.1f}ms  "
+                f"vae {acc_vae/n_batches*1e3:.1f}ms  "
+                f"unet {acc_unet/n_batches*1e3:.1f}ms  "
+                f"bwd {acc_bwd/n_batches*1e3:.1f}ms  "
+                f"total {(acc_data+acc_vae+acc_unet+acc_bwd)/n_batches*1e3:.1f}ms\n"
+                f"  Bottleneck : {max(('data',acc_data),('vae',acc_vae),('unet',acc_unet),('bwd',acc_bwd),key=lambda x:x[1])[0].upper()}\n"
+                f"  GPU memory — Allocated: {torch.cuda.memory_allocated()/1e9:.2f}GB  "
+                f"Cached: {torch.cuda.memory_reserved()/1e9:.2f}GB\n"
+                f"  Early stop — best_val: {best_val_loss:.4f}  patience: {epochs_without_improvement}/{PATIENCE}\n"
             )
+
+        # ── Early stopping (broadcast decision to all ranks) ──────────────────
+        should_stop = torch.tensor([0], device=device)
+        if rank == 0:
+            if val_loss_t.item() < best_val_loss:
+                best_val_loss = val_loss_t.item()
+                epochs_without_improvement = 0
+            else:
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= PATIENCE:
+                    should_stop[0] = 1
+                    print(f"\n  Early stopping: val loss hasn't improved for {PATIENCE} epochs (best={best_val_loss:.4f})")
+
+        torch.distributed.broadcast(should_stop, src=0)
+        if should_stop[0] == 1:
+            break
 
     # ── Save EMA model ────────────────────────────────────────────────────────
     if rank == 0:
