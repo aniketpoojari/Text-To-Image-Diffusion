@@ -41,9 +41,10 @@ def create_zip(source_dir: str, zip_path: str):
             for file in sorted(files):
                 abs_path = os.path.join(root, file)
                 # arcname keeps 'flowers/images/xxx.jpg', 'flowers/embeddings/xxx.pt', etc.
+                # replace os.sep with / for portability to Linux containers
                 arc_name = os.path.join(
                     folder_name, os.path.relpath(abs_path, source_dir)
-                )
+                ).replace(os.sep, '/')
                 zf.write(abs_path, arc_name)
 
     size_mb = os.path.getsize(zip_path) / 1024 / 1024

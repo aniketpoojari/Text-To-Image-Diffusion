@@ -87,6 +87,13 @@ class TRTEngine:
         output_tensors = {}
         for name in output_names:
             shape = tuple(self.context.get_tensor_shape(name))
+            if any(d < 0 for d in shape):
+                raise RuntimeError(
+                    f"TensorRT output '{name}' has unresolved shape {shape}. "
+                    "The TRT engines are likely stale (built for a different "
+                    "latent resolution). Rebuild them with:  "
+                    "python src/tensorrt_converter.py --config=params.yaml"
+                )
             dtype = dtype_map.get(self.engine.get_tensor_dtype(name), torch.float32)
             t = torch.empty(shape, dtype=dtype, device="cuda")
             output_tensors[name] = t
@@ -168,7 +175,7 @@ def load_models(method):
     else:  # pytorch
         vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(DEVICE).eval()
         unet = torch.load(_get_pth_path(), map_location=DEVICE, weights_only=False).eval()
-        text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14").to(DEVICE)
+        text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14").to(DEVICE).eval()
         # Tuple layout: (vae, unet, tokenizer, text_encoder, scheduler)
         return vae, unet, tokenizer, text_encoder, scheduler
 
@@ -252,11 +259,14 @@ def generate_image(prompt, cfg_scale, steps, models, method):
     status = st.empty()
     preview_placeholder = st.empty()
 
+    # VAE decode is expensive on CPU — only preview every few steps there
+    preview_every = max(1, steps // 6) if DEVICE == "cpu" else 1
+
     with torch.no_grad():
         for i, t in enumerate(scheduler.timesteps):
             lat_in = torch.cat([latents, latents])
             txt_emb = torch.cat([uncond_emb, cond_emb])
-            t_batch = torch.full((2,), t.item(), dtype=torch.float32, device=device)
+            t_batch = torch.full((2,), t.item(), dtype=torch.long, device=device)
 
             if method in ("onnx", "tensorrt"):
                 unet_sess = models[1]
@@ -264,7 +274,7 @@ def generate_image(prompt, cfg_scale, steps, models, method):
                     ["noise_pred"],
                     {
                         "latents": lat_in.cpu().numpy(),
-                        "timesteps": t_batch.cpu().numpy(),
+                        "timesteps": t_batch.cpu().numpy().astype(np.int64),
                         "encoder_hidden_states": txt_emb.cpu().numpy(),
                     },
                 )[0]
@@ -272,7 +282,7 @@ def generate_image(prompt, cfg_scale, steps, models, method):
             else:
                 unet = models[1]
                 noise_pred_raw = unet(
-                    lat_in, t_batch.long(), encoder_hidden_states=txt_emb, return_dict=False
+                    lat_in, t_batch, encoder_hidden_states=txt_emb, return_dict=False
                 )[0]
 
             n_uncond, n_cond = noise_pred_raw.chunk(2)
@@ -282,9 +292,10 @@ def generate_image(prompt, cfg_scale, steps, models, method):
             progress_bar.progress((i + 1) / steps)
             status.write(f"Step {i + 1}/{steps}")
 
-            img = decode_preview(latents.clone(), method, models)
-            if img is not None:
-                preview_placeholder.image(img, caption=f"Step {i + 1}/{steps}", width=400)
+            if (i + 1) % preview_every == 0:
+                img = decode_preview(latents.clone(), method, models)
+                if img is not None:
+                    preview_placeholder.image(img, caption=f"Step {i + 1}/{steps}", width=400)
 
     progress_bar.empty()
     status.empty()

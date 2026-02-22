@@ -29,20 +29,26 @@ class EMA:
 
     def __init__(self, model: torch.nn.Module, decay: float = 0.9999):
         self.decay = decay
-        # Store shadow params on CPU to avoid consuming GPU memory
+        # Store shadow params on CPU in float32 for better precision
         self.shadow = {
-            name: param.data.clone().cpu()
+            name: param.data.clone().cpu().float()
             for name, param in model.named_parameters()
             if param.requires_grad
         }
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module):
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                self.shadow[name].mul_(self.decay).add_(
-                    param.data.cpu(), alpha=1.0 - self.decay
-                )
+        # Batch all GPU→CPU transfers first (single sync point),
+        # then update all shadow params on CPU — avoids per-parameter sync.
+        cpu_params = {
+            name: param.data.cpu().float()
+            for name, param in model.named_parameters()
+            if param.requires_grad
+        }
+        for name in self.shadow:
+            self.shadow[name].mul_(self.decay).add_(
+                cpu_params[name], alpha=1.0 - self.decay
+            )
 
     def apply_shadow(self, model: torch.nn.Module):
         """Copy EMA weights into the model (for saving or evaluation)."""
@@ -59,35 +65,27 @@ class EMA:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def unzip_data(rank):
-    """Unzip the data file in the SageMaker container."""
+def unzip_data(local_rank):
+    """Unzip the data file in the SageMaker container (local rank 0 only)."""
     try:
         input_dir = "/opt/ml/input/data/train"
         data_zip = os.path.join(input_dir, "flowers.zip")
         extract_dir = "/opt/ml/input/data/train"
-        verbose = rank == 0
 
-        if verbose:
+        if local_rank == 0:
             print(f"Checking for zipped data at {data_zip}")
-
-        if os.path.exists(data_zip):
-            if verbose:
+            if os.path.exists(data_zip):
                 print(f"Found zipped data. Extracting to {extract_dir}...")
-            os.makedirs(extract_dir, exist_ok=True)
-            with zipfile.ZipFile(data_zip, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
-            if verbose:
+                os.makedirs(extract_dir, exist_ok=True)
+                with zipfile.ZipFile(data_zip, "r") as zip_ref:
+                    zip_ref.extractall(extract_dir)
                 print("Extraction complete!")
-                print(f"Extracted contents: {os.listdir(extract_dir)}")
-                images_dir = os.path.join(extract_dir, "images")
-                captions_dir = os.path.join(extract_dir, "captions")
-                if os.path.exists(images_dir):
-                    print(f"Number of images: {len(os.listdir(images_dir))}")
-                if os.path.exists(captions_dir):
-                    print(f"Number of captions: {len(os.listdir(captions_dir))}")
-        else:
-            if verbose:
+            else:
                 print("No zipped data found. Using original input directory.")
+        
+        # Ensure all local ranks wait for extraction to finish
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
 
     except Exception as e:
         print(f"Error during data extraction: {e}")
@@ -96,24 +94,29 @@ def unzip_data(rank):
 def setup_distributed():
     """Initialize distributed training using DeepSpeed's communication module."""
     try:
-        sm_hosts = json.loads(os.environ.get("SM_HOSTS"))
-        sm_current_host = os.environ.get("SM_CURRENT_HOST")
+        # SageMaker variables
+        sm_hosts = json.loads(os.environ.get("SM_HOSTS", '["localhost"]'))
+        sm_current_host = os.environ.get("SM_CURRENT_HOST", "localhost")
 
+        # Global rank and world size
         rank = sm_hosts.index(sm_current_host)
-        local_rank = 0  # One GPU per instance
+        world_size = len(sm_hosts)
+
+        # Local rank is index on current instance (relevant for multi-GPU nodes)
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
         os.environ.update({
-            "WORLD_SIZE": str(len(sm_hosts)),
+            "WORLD_SIZE": str(world_size),
             "RANK": str(rank),
             "LOCAL_RANK": str(local_rank),
             "MASTER_ADDR": sm_hosts[0],
-            "MASTER_PORT": "29500",
+            "MASTER_PORT": os.environ.get("MASTER_PORT", "29500"),
         })
 
         deepspeed.init_distributed()
         torch.cuda.set_device(local_rank)
 
-        return rank, len(sm_hosts), local_rank
+        return rank, world_size, local_rank
 
     except Exception as e:
         raise RuntimeError(f"Failed to initialize distributed training: {e}")
@@ -154,6 +157,7 @@ def training():
     unet_learning_rate = float(os.getenv("UNET_LEARNING_RATE"))
     weight_decay       = float(os.getenv("WEIGHT_DECAY"))
     num_epochs         = int(os.getenv("NUM_EPOCHS"))
+    use_ema            = os.getenv("USE_EMA", "True").lower() in ("true", "1", "yes")
 
     # MLflow setup (rank 0 only)
     if rank == 0:
@@ -181,10 +185,10 @@ def training():
             "act_fn": act_fn,
             "unet_learning_rate": unet_learning_rate,
             "weight_decay": weight_decay, "num_epochs": num_epochs,
-            "world_size": world_size, "ema_decay": 0.9999,
+            "world_size": world_size, "use_ema": use_ema, "ema_decay": 0.9999,
         })
 
-    unzip_data(rank)
+    unzip_data(local_rank)
 
     # ── Datasets ──────────────────────────────────────────────────────────────
     # range=(start, end) semantics — the dataloader bug fix is in dataloader.py
@@ -196,6 +200,7 @@ def training():
     val_dataset = TextImageDataLoader(
         datadir, range=(train_size, train_size + val_size),
         image_size=vae_image_size, max_text_length=max_length,
+        training=False,
     )
 
     train_sampler = DistributedSampler(
@@ -214,11 +219,17 @@ def training():
         num_workers=4, pin_memory=True, prefetch_factor=4, persistent_workers=True,
     )
 
+    if len(train_loader) == 0:
+        raise RuntimeError(f"Train dataset is empty for rank {rank}. Check data size.")
+    if len(val_loader) == 0:
+        raise RuntimeError(f"Val dataset is empty for rank {rank}. Check val_size.")
+
     noise_scheduler = DDPMScheduler(
         num_train_timesteps=T,
         beta_start=1e-4,
         beta_end=0.02,
         beta_schedule="squaredcos_cap_v2",
+        prediction_type="epsilon",
     )
 
     # ── Models ────────────────────────────────────────────────────────────────
@@ -269,11 +280,12 @@ def training():
             "allgather_partitions": True,
         },
         "scheduler": {
-            "type": "WarmupLR",
+            "type": "WarmupDecayLR",
             "params": {
                 "warmup_min_lr": 1e-6,
                 "warmup_max_lr": unet_learning_rate,
-                "warmup_num_steps": 500,
+                "warmup_num_steps": 200,
+                "total_num_steps": len(train_loader) * num_epochs,
             },
         },
     }
@@ -283,10 +295,11 @@ def training():
     )
 
     # EMA — maintained on rank 0 only (rank 0 has all parameters with ZeRO-2)
-    ema = EMA(model_diffuser.module, decay=0.9999) if rank == 0 else None
+    ema = EMA(model_diffuser.module, decay=0.9999) if (use_ema and rank == 0) else None
 
-    PATIENCE = 5
+    PATIENCE = 10
     best_val_loss = float('inf')
+    best_ema_shadow = None  # snapshot of EMA weights at best val loss
     epochs_without_improvement = 0
     n_batches = len(train_loader)
 
@@ -316,7 +329,13 @@ def training():
         data_start = time.time()
 
         for batch_idx, (images, captions) in enumerate(train_loader):
-            torch.cuda.synchronize()
+            # Only sync for timing on batches we actually log
+            should_log = rank == 0 and (
+                (batch_idx + 1) % LOG_EVERY == 0 or batch_idx == n_batches - 1
+            )
+
+            if should_log:
+                torch.cuda.synchronize()
             t_data = time.time() - data_start
 
             batch_start = time.time()
@@ -325,11 +344,13 @@ def training():
             captions = captions.to(device, dtype=torch.float16, non_blocking=True)
 
             # ── VAE encode ────────────────────────────────────────────────────
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t0 = time.time()
             with torch.no_grad():
                 latents = model_vae.encode(images).latent_dist.sample()
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t_vae = time.time() - t0
 
             latents = latents.detach() * 0.18215
@@ -337,8 +358,8 @@ def training():
             epsilons = torch.randn_like(latents)
             noisy_latents = noise_scheduler.add_noise(latents, epsilons, ts)
 
-            # CFG dropout: 10% unconditional training
-            if torch.rand(1).item() < 0.1:
+            # CFG dropout: 15% unconditional training
+            if torch.rand(1).item() < 0.15:
                 encoder_hidden_states = (
                     train_loader.dataset.get_null_embedding(captions.shape[0])
                     .to(device, dtype=torch.float16)
@@ -347,27 +368,31 @@ def training():
                 encoder_hidden_states = captions
 
             # ── UNet forward ──────────────────────────────────────────────────
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t0 = time.time()
             noise_pred = model_diffuser(
                 noisy_latents, ts,
                 encoder_hidden_states=encoder_hidden_states,
                 return_dict=False,
             )[0]
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t_unet = time.time() - t0
 
             batch_diff_loss = F.mse_loss(noise_pred, epsilons)
 
             # ── Backward + step ───────────────────────────────────────────────
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t0 = time.time()
             model_diffuser.backward(batch_diff_loss)
             model_diffuser.step()
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t_bwd = time.time() - t0
 
-            if rank == 0:
+            if ema is not None:
                 ema.update(model_diffuser.module)
 
             total_epoch_diff_loss += batch_diff_loss.item()
@@ -376,7 +401,8 @@ def training():
             acc_unet += t_unet
             acc_bwd  += t_bwd
 
-            torch.cuda.synchronize()
+            if should_log:
+                torch.cuda.synchronize()
             t_batch = time.time() - batch_start
             imgs_per_sec = batch_size * world_size / t_batch
 
@@ -384,7 +410,7 @@ def training():
                 global_batches_done += 1
                 overall_pct = 100.0 * global_batches_done / total_batches_all
 
-                if (batch_idx + 1) % LOG_EVERY == 0 or batch_idx == n_batches - 1:
+                if should_log:
                     print(
                         f"  Ep {epoch+1:>3}/{num_epochs} | "
                         f"Batch {batch_idx+1:>4}/{n_batches} | "
@@ -463,6 +489,11 @@ def training():
             if val_loss_t.item() < best_val_loss:
                 best_val_loss = val_loss_t.item()
                 epochs_without_improvement = 0
+                if ema is not None:
+                    best_ema_shadow = {k: v.clone() for k, v in ema.shadow.items()}
+                    print(f"  Checkpointed best EMA weights (val_loss={best_val_loss:.4f})")
+                else:
+                    print(f"  Checkpointed best val_loss={best_val_loss:.4f} (EMA off)")
             else:
                 epochs_without_improvement += 1
                 if epochs_without_improvement >= PATIENCE:
@@ -475,9 +506,12 @@ def training():
 
     # ── Save EMA model ────────────────────────────────────────────────────────
     if rank == 0:
-        print("\nTraining complete. Saving EMA model weights...")
+        if ema is not None:
+            print("\nTraining complete. Saving EMA model weights...")
+        else:
+            print("\nTraining complete. Saving raw model weights (EMA off)...")
 
-        # Rebuild a fresh model and load EMA weights into it
+        # Rebuild a fresh model and load weights into it
         diffuser = UNet2DConditionModel(
             sample_size=unet_image_size,
             in_channels=in_channels,
@@ -494,9 +528,18 @@ def training():
             time_embedding_type=time_embedding_type,
             act_fn=act_fn,
         )
-        diffuser.load_state_dict(model_diffuser.module.state_dict())
-        # Overwrite with EMA weights — these produce better generation quality
-        ema.apply_shadow(diffuser)
+
+        if ema is not None:
+            # Use best-checkpoint EMA weights (from epoch with lowest val loss),
+            # falling back to latest EMA if no improvement was ever recorded.
+            save_shadow = best_ema_shadow if best_ema_shadow is not None else ema.shadow
+            for name, param in diffuser.named_parameters():
+                if param.requires_grad and name in save_shadow:
+                    param.data.copy_(save_shadow[name])
+        else:
+            # Copy raw training weights directly
+            raw_state = model_diffuser.module.state_dict()
+            diffuser.load_state_dict(raw_state)
 
         torch.save(diffuser, "diffuser.pth")
 

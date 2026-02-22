@@ -5,11 +5,11 @@ stages:
     deps:
     - path: src/log_training_model.py
       hash: md5
-      md5: 3eb1f847b4fa2ead3306b874892ee9f6
-      size: 3488
+      md5: 2c4a2341b8d54b7f40b0404a1ddfc677
+      size: 5374
     - path: training_completion.txt
       hash: md5
-      md5: 08e07287c486b7a21100c0d73e73b45c
+      md5: 739df8c8adcbf65552320903a105b66a
       size: 41
     params:
       params.yaml:
@@ -20,23 +20,23 @@ stages:
     outs:
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 519d2c07b9830926dd263e62cbb83a44
-      size: 376840262
+      md5: c09a4fccc209070d8dd4eb21dbc746b5
+      size: 593665094
     - path: saved_models/model_metadata.json
       hash: md5
-      md5: 3c30b18123b22e827876a67b6849cd83
+      md5: 412adca0b3e598e0f0af7f79bff54782
       size: 139
   data-push:
     cmd: python src/upload.py --config=params.yaml
     deps:
     - path: data/raw/flowers/captions
       hash: md5
-      md5: 47e5a29fbd51f8a6796739a212c30ce4.dir
-      size: 3751265
+      md5: 5e47388a2dae57c03ad1167f204bf2b6.dir
+      size: 1266107
       nfiles: 8189
     - path: data/raw/flowers/embeddings
       hash: md5
-      md5: 76976d4ffbe402975511774222342565.dir
+      md5: 8d50d45c37b01b9141df05385ee93fab.dir
       size: 1947123375
       nfiles: 8190
     - path: data/raw/flowers/images
@@ -46,8 +46,8 @@ stages:
       nfiles: 8189
     - path: src/upload.py
       hash: md5
-      md5: 6ada032b7a29afdc4331b98e90fe579b
-      size: 3529
+      md5: 5b927e90b0bb5647da58230708489492
+      size: 3627
     params:
       params.yaml:
         data.raw: data/raw/flowers
@@ -55,7 +55,7 @@ stages:
     outs:
     - path: upload_completion.txt
       hash: md5
-      md5: 0538a7d2d51b3879d20b818faab3ca35
+      md5: e7d599c46a30ce31b1616ee67a8d24c7
       size: 141
   ecr-login:
     cmd: aws ecr get-login-password --region us-west-2 | docker login --username AWS
@@ -113,24 +113,24 @@ stages:
       nfiles: 8189
     - path: src/caption_generator.py
       hash: md5
-      md5: 8f9adc1c0cbe45b6b72d65357fe6144d
-      size: 5354
+      md5: 7ac02a05e6492780e8b297739c356ed1
+      size: 5489
     params:
       params.yaml:
         data.raw: data/raw/flowers
     outs:
     - path: data/raw/flowers/captions
       hash: md5
-      md5: 47e5a29fbd51f8a6796739a212c30ce4.dir
-      size: 3751265
+      md5: 5e47388a2dae57c03ad1167f204bf2b6.dir
+      size: 1266107
       nfiles: 8189
   precompute-embeddings:
     cmd: python src/precompute_embeddings.py --config=params.yaml
     deps:
     - path: data/raw/flowers/captions
       hash: md5
-      md5: 47e5a29fbd51f8a6796739a212c30ce4.dir
-      size: 3751265
+      md5: 5e47388a2dae57c03ad1167f204bf2b6.dir
+      size: 1266107
       nfiles: 8189
     - path: data/raw/flowers/images
       hash: md5
@@ -139,8 +139,8 @@ stages:
       nfiles: 8189
     - path: src/precompute_embeddings.py
       hash: md5
-      md5: 15474839338af783f8ba9ec1d354d986
-      size: 4081
+      md5: 04a22cf40b5a52b4fc176d3e9cc4bfe1
+      size: 4115
     params:
       params.yaml:
         clip.max_length: 77
@@ -148,7 +148,7 @@ stages:
     outs:
     - path: data/raw/flowers/embeddings
       hash: md5
-      md5: 76976d4ffbe402975511774222342565.dir
+      md5: 8d50d45c37b01b9141df05385ee93fab.dir
       size: 1947123375
       nfiles: 8190
   evaluate:
@@ -156,110 +156,110 @@ stages:
     deps:
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 519d2c07b9830926dd263e62cbb83a44
-      size: 376840262
+      md5: c09a4fccc209070d8dd4eb21dbc746b5
+      size: 593665094
     - path: src/evaluate.py
       hash: md5
-      md5: c89910ca7314d1ff5ad83b7e67282694
-      size: 4794
+      md5: 4d3eeaa8de2f4bed6acf43939283237b
+      size: 4891
     params:
       params.yaml:
         log_trained_model.diffuser_dir: saved_models/diffuser.pth
     outs:
     - path: evaluation_results.json
       hash: md5
-      md5: 72ff31b3784b344fda16e2b5bffdba0d
-      size: 936
+      md5: bb3bd87644c807df8835a7a7ae12e7a4
+      size: 937
   onnx_convert:
     cmd: python src/onnx_converter.py
     deps:
     - path: evaluation_results.json
       hash: md5
-      md5: 72ff31b3784b344fda16e2b5bffdba0d
-      size: 936
+      md5: bb3bd87644c807df8835a7a7ae12e7a4
+      size: 937
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 519d2c07b9830926dd263e62cbb83a44
-      size: 376840262
+      md5: c09a4fccc209070d8dd4eb21dbc746b5
+      size: 593665094
     - path: src/onnx_converter.py
       hash: md5
-      md5: 5a2ec45a8b24eb9b008fd4d3d6324e13
-      size: 4706
+      md5: 1d921095390b3c3e94afca2a9482c5b0
+      size: 5815
     outs:
     - path: saved_models/onnx_models
       hash: md5
-      md5: d3992eb44038890b544e1386f5298c4c.dir
-      size: 1067703877
+      md5: f731a5d66d1ed55077de39e902bc82ca.dir
+      size: 1284636899
       nfiles: 3
   tensorrt_convert:
     cmd: python src/tensorrt_converter.py
     deps:
     - path: saved_models/onnx_models
       hash: md5
-      md5: d3992eb44038890b544e1386f5298c4c.dir
-      size: 1067703877
+      md5: f731a5d66d1ed55077de39e902bc82ca.dir
+      size: 1284636899
       nfiles: 3
     - path: src/tensorrt_converter.py
       hash: md5
-      md5: e3d6303142313cd32e5d708b9bbfe61c
-      size: 4733
+      md5: ed5007a5fba6540854b42e6d593ab206
+      size: 3319
     outs:
     - path: saved_models/trt_models
       hash: md5
-      md5: 6f25bc3ded70da32483945200634ded0.dir
-      size: 562958308
+      md5: b2f8eea6de1287eb433101d3225f244e.dir
+      size: 687159900
       nfiles: 3
   push_to_hub:
     cmd: python src/push_to_hub.py --config=params.yaml
     deps:
     - path: evaluation_results.json
       hash: md5
-      md5: 72ff31b3784b344fda16e2b5bffdba0d
-      size: 936
+      md5: bb3bd87644c807df8835a7a7ae12e7a4
+      size: 937
     - path: saved_models/diffuser.pth
       hash: md5
-      md5: 519d2c07b9830926dd263e62cbb83a44
-      size: 376840262
+      md5: c09a4fccc209070d8dd4eb21dbc746b5
+      size: 593665094
     - path: saved_models/onnx_models
       hash: md5
-      md5: d3992eb44038890b544e1386f5298c4c.dir
-      size: 1067703877
+      md5: f731a5d66d1ed55077de39e902bc82ca.dir
+      size: 1284636899
       nfiles: 3
     - path: saved_models/trt_models
       hash: md5
-      md5: 6f25bc3ded70da32483945200634ded0.dir
-      size: 562958308
+      md5: b2f8eea6de1287eb433101d3225f244e.dir
+      size: 687159900
       nfiles: 3
     - path: src/push_to_hub.py
       hash: md5
-      md5: 6bede0dcdcd6917102b3a40611dd3110
-      size: 2658
+      md5: 722ab9455619840b6b343f53948b4fee
+      size: 2635
     params:
       params.yaml:
         huggingface.model_repo: aniketp2009gmail/flower-diffusion
     outs:
     - path: push_completion.txt
       hash: md5
-      md5: 1b551942f143408c8887f4e2c61547db
+      md5: 9338939b1b4d5baadc10f0c575f1ea3f
       size: 194
   training:
     cmd: python src/trainingjob.py --config=params.yaml
     deps:
     - path: src/code/dataloader.py
       hash: md5
-      md5: 161b3b04b8ec49a7ee04792ae0248ed1
-      size: 6458
+      md5: 9bcca820836ba053825d9365564b7cb8
+      size: 7243
     - path: src/code/training_sagemaker_deepspeed.py
       hash: md5
-      md5: d767fcd03d02d24ede6a109b879b5673
-      size: 22658
+      md5: ef05dbfe2ffe9b807bd3e39c0bf1750a
+      size: 24706
     - path: src/trainingjob.py
       hash: md5
-      md5: 24b5f1540804b5e2f980b05aa3156746
-      size: 5921
+      md5: 21e2004bc66607f56fad7c290ebb0c70
+      size: 6109
     - path: upload_completion.txt
       hash: md5
-      md5: 0538a7d2d51b3879d20b818faab3ca35
+      md5: e7d599c46a30ce31b1616ee67a8d24c7
       size: 141
     params:
       params.yaml:
@@ -277,24 +277,24 @@ stages:
         pytorch_estimator.entry_point: training_sagemaker_deepspeed.py
         pytorch_estimator.framework_version: 2.6.0
         pytorch_estimator.instance_count: 2
-        pytorch_estimator.instance_type: ml.g4dn.xlarge
+        pytorch_estimator.instance_type: ml.g5.xlarge
         pytorch_estimator.max_run: 14400
         pytorch_estimator.max_wait: 14400
         pytorch_estimator.py_version: py312
         pytorch_estimator.role: arn:aws:iam::975050169307:role/text-to-image-role
         pytorch_estimator.s3_train_data: s3://text-to-image-aniket
         pytorch_estimator.source_dir: src/code
-        pytorch_estimator.use_spot_instances: true
-        training.batch_size: 32
-        training.num_epochs: 10
-        training.unet_learning_rate: 0.0001
+        pytorch_estimator.use_spot_instances: false
+        training.batch_size: 64
+        training.num_epochs: 75
+        training.unet_learning_rate: 0.0002
         training.weight_decay: 0.01
         unet.act_fn: silu
-        unet.attention_head_dim: 96
-        unet.block_out_channels: 128,256,512
+        unet.attention_head_dim: 8
+        unet.block_out_channels: 192,384,576
         unet.cross_attention_dim: 768
         unet.down_block_types: DownBlock2D,CrossAttnDownBlock2D,CrossAttnDownBlock2D
-        unet.dropout: 0.1
+        unet.dropout: 0.0
         unet.image_size: 32,32
         unet.in_channels: 4
         unet.layers_per_block: 2
@@ -307,5 +307,5 @@ stages:
     outs:
     - path: training_completion.txt
       hash: md5
-      md5: 08e07287c486b7a21100c0d73e73b45c
+      md5: 739df8c8adcbf65552320903a105b66a
       size: 41

@@ -33,8 +33,8 @@ def push_to_hub(config_path):
     config = read_params(config_path)
 
     repo_id = config["huggingface"]["model_repo"]
-    # Use HF_TOKEN env var if set, otherwise fall back to token cached by huggingface-cli login
-    hf_token = os.environ.get("HF_TOKEN") or True
+    # Use HF_TOKEN env var if set, otherwise None (uses cached token from login)
+    hf_token = os.environ.get("HF_TOKEN")
 
     api = HfApi(token=hf_token)
 

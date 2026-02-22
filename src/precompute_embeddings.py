@@ -49,7 +49,7 @@ def precompute_embeddings(config_path: str):
     missing = [
         f for f in image_files
         if not os.path.exists(
-            os.path.join(embeddings_dir, f.replace(".jpg", ".pt"))
+            os.path.join(embeddings_dir, os.path.splitext(f)[0] + ".pt")
         )
     ]
 
@@ -78,8 +78,9 @@ def precompute_embeddings(config_path: str):
 
         # Per-image embeddings
         for image_file in tqdm(missing, desc="Embedding images"):
-            emb_path     = os.path.join(embeddings_dir, image_file.replace(".jpg", ".pt"))
-            caption_file = image_file.replace(".jpg", ".txt")
+            base_name    = os.path.splitext(image_file)[0]
+            emb_path     = os.path.join(embeddings_dir, base_name + ".pt")
+            caption_file = base_name + ".txt"
             caption_path = os.path.join(captions_dir, caption_file)
 
             with open(caption_path, "r", encoding="utf-8") as f:

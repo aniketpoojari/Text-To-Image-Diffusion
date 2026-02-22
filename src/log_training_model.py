@@ -21,6 +21,50 @@ def get_current_best_loss():
     return float("inf")
 
 
+def download_from_run(config_path, run_id):
+    """Download model from a specific MLflow run ID (for testing)."""
+    config = read_params(config_path)
+
+    server_uri = config["mlflow"]["server_uri"]
+    s3_bucket = config["mlflow"]["s3_mlruns_bucket"]
+    diffuser_dest = config["log_trained_model"]["diffuser_dir"]
+
+    mlflow.set_tracking_uri(server_uri)
+
+    # Verify the run exists
+    try:
+        run = mlflow.get_run(run_id)
+    except Exception:
+        raise ValueError(f"Run '{run_id}' not found in MLflow.")
+
+    val_loss = float(run.data.metrics.get("val_diffuser_loss", float("nan")))
+    print(f"Run      : {run_id}")
+    print(f"Status   : {run.info.status}")
+    print(f"Val loss : {val_loss:.4f}" if not pd.isna(val_loss) else "Val loss : N/A")
+
+    # Check model exists in S3
+    s3 = boto3.client("s3")
+    s3_key = f"{run_id}/diffuser.pth"
+    try:
+        s3.head_object(Bucket=s3_bucket, Key=s3_key)
+    except ClientError:
+        raise ValueError(f"No model found at s3://{s3_bucket}/{s3_key}")
+
+    os.makedirs(os.path.dirname(diffuser_dest), exist_ok=True)
+    print(f"Downloading s3://{s3_bucket}/{s3_key} → {diffuser_dest} ...")
+    s3.download_file(s3_bucket, s3_key, diffuser_dest)
+    print("Done.")
+
+    metadata = {
+        "run_id": run_id,
+        "val_diffuser_loss": val_loss if not pd.isna(val_loss) else None,
+        "downloaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    with open(METADATA_PATH, "w") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Saved metadata to {METADATA_PATH}")
+
+
 def log_production_model(config_path):
     config = read_params(config_path)
 
@@ -96,5 +140,11 @@ def log_production_model(config_path):
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument("--config", default="params.yaml")
+    args.add_argument("--run-id", default=None,
+                       help="Download model from a specific MLflow run ID instead of the best run")
     parsed_args = args.parse_args()
-    log_production_model(config_path=parsed_args.config)
+
+    if parsed_args.run_id:
+        download_from_run(config_path=parsed_args.config, run_id=parsed_args.run_id)
+    else:
+        log_production_model(config_path=parsed_args.config)

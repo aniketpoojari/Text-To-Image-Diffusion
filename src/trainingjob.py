@@ -37,9 +37,10 @@ def setup_training(config_path):
         "TIME_EMBEDDING_TYPE": config['unet']['time_embedding_type'],
         "ACT_FN": config['unet']['act_fn'],
         
-        "UNET_LEARNING_RATE": config['training']['unet_learning_rate'],
-        "WEIGHT_DECAY": config['training']['weight_decay'],
+        "UNET_LEARNING_RATE": str(config['training']['unet_learning_rate']),
+        "WEIGHT_DECAY": str(config['training']['weight_decay']),
         "NUM_EPOCHS": str(config['training']['num_epochs']),
+        "USE_EMA": str(config['training']['use_ema']),
 
         "EXPERIMENT_NAME": config['mlflow']['experiment_name'],
         "RUN_NAME": config['mlflow']['run_name'],
@@ -82,7 +83,8 @@ def setup_training(config_path):
     ]
 
     # Configure PyTorch estimator
-    estimator = PyTorch(
+    use_spot = config['pytorch_estimator']['use_spot_instances']
+    estimator_kwargs = dict(
         entry_point=config['pytorch_estimator']['entry_point'],
         source_dir=config['pytorch_estimator']['source_dir'],
         role=config['pytorch_estimator']['role'],
@@ -90,8 +92,7 @@ def setup_training(config_path):
         py_version=config['pytorch_estimator']['py_version'],
         instance_count=config['pytorch_estimator']['instance_count'],
         instance_type=config['pytorch_estimator']['instance_type'],
-        use_spot_instances=config['pytorch_estimator']['use_spot_instances'],
-        max_wait=config['pytorch_estimator']['max_wait'],
+        use_spot_instances=use_spot,
         max_run=config['pytorch_estimator']['max_run'],
         environment=environment,
         metric_definitions=metric_definitions,
@@ -99,7 +100,12 @@ def setup_training(config_path):
             "deepspeed": {
                 "enabled": True
             }
-        }
+        },
+    )
+    if use_spot:
+        estimator_kwargs["max_wait"] = config['pytorch_estimator']['max_wait']
+
+    estimator = PyTorch(**estimator_kwargs
     )
 
     # Define data channels
