@@ -1,18 +1,12 @@
 # Text-to-Image Generation with Diffusion Models
 
-[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.6-ee4c2c?logo=pytorch)](https://pytorch.org)
-[![AWS SageMaker](https://img.shields.io/badge/AWS-SageMaker-FF9900?logo=amazonaws)](https://aws.amazon.com/sagemaker/)
-[![DeepSpeed](https://img.shields.io/badge/DeepSpeed-ZeRO_Stage_2-blue)](https://deepspeed.ai)
-[![DVC](https://img.shields.io/badge/DVC-Pipeline-945DD6?logo=dvc)](https://dvc.org)
-[![MLflow](https://img.shields.io/badge/MLflow-DagShub-0194E2?logo=mlflow)](https://dagshub.com)
-[![ONNX](https://img.shields.io/badge/ONNX-Optimized_Inference-grey?logo=onnx)](https://onnx.ai)
-[![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B?logo=streamlit)](https://streamlit.io)
-[![HF Spaces](https://img.shields.io/badge/HF_Spaces-Live_Demo-yellow?logo=huggingface)](https://huggingface.co/spaces/aniketp2009gmail/text-to-image-flowers)
+[![HuggingFace Space](https://img.shields.io/badge/HuggingFace-Space-orange)](https://huggingface.co/spaces/aniketp2009gmail/text-to-image-flowers)
 
 An end-to-end text-to-image diffusion model — from data preparation and caption generation through distributed training on AWS SageMaker, experiment tracking with MLflow, model optimization (ONNX / TensorRT), to automated deployment on Hugging Face Spaces via CI/CD.
 
-**[Live Demo](https://huggingface.co/spaces/aniketp2009gmail/text-to-image-flowers)** · **[Model on HF Hub](https://huggingface.co/aniketp2009gmail/flower-diffusion)** · **[Experiment Tracking](https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow)** · **[System Design](SYSTEM_DESIGN.md)**
+**🚀 Try it live on Hugging Face Spaces: [Text-to-Image Flowers Generator](https://huggingface.co/spaces/aniketp2009gmail/text-to-image-flowers)**
+
+**[Model on HF Hub](https://huggingface.co/aniketp2009gmail/flower-diffusion)** · **[Experiment Tracking](https://dagshub.com/aniketpoojari/Text-To-Image-Diffusion.mlflow)** · **[System Design](SYSTEM_DESIGN.md)**
 
 ---
 
