@@ -1,5 +1,13 @@
 # Text-to-Image Generation with Diffusion Models
 
+![Python](https://img.shields.io/badge/python-3670AD?style=for-the-badge&logo=python&logoColor=ffdd54)
+![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
+![DVC](https://img.shields.io/badge/dvc-945DD6?style=for-the-badge&logo=dvc&logoColor=white)
+![MLflow](https://img.shields.io/badge/mlflow-%23d3d3d3.svg?style=for-the-badge&logo=mlflow&logoColor=blue)
+![ONNX](https://img.shields.io/badge/ONNX-grey?style=for-the-badge&logo=onnx)
+![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-yellow?style=for-the-badge)
+
 [![HuggingFace Space](https://img.shields.io/badge/HuggingFace-Space-orange)](https://huggingface.co/spaces/aniketp2009gmail/text-to-image-flowers)
 
 An end-to-end text-to-image diffusion model — from data preparation and caption generation through distributed training on AWS SageMaker, experiment tracking with MLflow, model optimization (ONNX / TensorRT), to automated deployment on Hugging Face Spaces via CI/CD.
